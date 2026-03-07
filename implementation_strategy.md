@@ -1017,20 +1017,21 @@ foia-fluent/
 
 **Deliverable:** User describes what they need, gets an optimized FOIA request letter drafted from verified legal context and MuckRock outcome intelligence.
 
-### Milestone 4: Response Tracking 🔧 *(In Progress)*
+### Milestone 4: Response Tracking ✅
 
-- [ ] JSON-based request persistence (local store, Supabase migration path)
-- [ ] Request lifecycle tracking (draft → submitted → awaiting → fulfilled/denied)
-- [ ] Deadline calculator (20 business days, federal holidays)
-- [ ] Communication timeline logging
-- [ ] Claude-powered response analysis (completeness, exemption validity, appeal grounds)
-- [ ] Follow-up letter generation (overdue requests)
-- [ ] Appeal letter generation (denied requests)
-- [ ] Request dashboard page (status overview, deadline countdowns)
-- [ ] Request detail page (timeline, actions, analysis)
-- [ ] Navigation between search/draft and request tracking
+- [x] JSON-based request persistence (local store, Supabase migration path)
+- [x] Request lifecycle tracking (draft → submitted → awaiting → fulfilled/denied)
+- [x] Deadline calculator (20 business days, skipping weekends + federal holidays 2025–2027)
+- [x] Communication timeline logging (incoming/outgoing, per-request, expandable)
+- [x] Claude-powered response analysis (completeness, exemption validity, appeal grounds)
+- [x] Follow-up letter generation (overdue requests, cites statutory deadline + days elapsed)
+- [x] Appeal letter generation (challenges each exemption, references OGIS mediation)
+- [x] Request dashboard page (filter tabs, overdue-first sort, status badges, deadline labels)
+- [x] Request detail page (deadline card, action panel, response analysis, generated letters, timeline)
+- [x] Navigation between search/draft and request tracking (sticky nav with active state)
+- [x] Research context persistence — Phase 1 discovery results + Phase 2 intelligence (similar requests, agency intel, drafting strategy, submission guide) saved with each tracked request and displayed in a collapsible "Research Context" section on the detail page
 
-**Deliverable:** Full request lifecycle management from draft to resolution.
+**Deliverable:** Full request lifecycle management from draft to resolution, with all research intelligence preserved as reference during agency negotiations.
 
 ### Milestone 5: Beyond FOIA + Data Hub
 
