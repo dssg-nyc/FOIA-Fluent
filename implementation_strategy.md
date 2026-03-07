@@ -661,50 +661,21 @@ User describes what they need
   }
 ```
 
-### Request Drafting Prompt Strategy
+### Request Drafting Prompt Strategy (Implemented)
 
-The Claude API call includes structured context:
+The drafting system uses a three-layer verified context approach to prevent hallucinated legal citations:
 
-```python
-async def draft_request(description: str, agency: Agency, law: FoiaLaw,
-                        similar_requests: list[Request]) -> DraftResult:
-    similar_context = "\n".join([
-        f"- Request to {r.agency.name}: '{r.title}' -> {r.status} "
-        f"(success score: {r.success_score})"
-        for r in similar_requests
-    ])
+1. **Verified Legal Context** — actual text of 5 U.S.C. § 552 sections (request rights, time limits, fee waivers, expedited processing, all 9 exemptions) embedded in `backend/app/data/federal_foia_statute.py`
+2. **Verified Agency Info** — FOIA portal URLs, email addresses, CFR regulation citations, and submission procedures from foia.gov, stored in `backend/app/data/federal_agencies.py`
+3. **MuckRock Outcome Intelligence** — two parallel research agents (Topic Agent + Agency Intel Agent) search MuckRock via Tavily for similar requests and agency-wide FOIA patterns
 
-    prompt = f"""Draft a FOIA request letter with these inputs:
+The Claude prompt explicitly instructs: "You may ONLY cite statutes and regulations provided in the VERIFIED LEGAL CONTEXT below. Do NOT cite any statute, regulation, case law, or legal authority from your training data."
 
-RECORDS NEEDED: {description}
-AGENCY: {agency.name} ({agency.jurisdiction})
-APPLICABLE LAW: {law.law_name} ({law.statute_ref})
-EXEMPTIONS TO AVOID: {json.dumps(law.exemptions)}
-TIME LIMITS: {json.dumps(law.time_limits)}
-AGENCY AVG RESPONSE: {agency.avg_response_days} days
-AGENCY DENIAL RATE: {agency.denial_rate}%
+Claude outputs structured JSON including the letter text, a `drafting_strategy` object explaining its reasoning (what it learned from successes, what denial patterns it avoided, scope decisions, exemption risk mitigation), and submission instructions.
 
-SIMILAR PAST REQUESTS:
-{similar_context}
+### Success Prediction Model (Deferred)
 
-Generate a request that:
-1. Uses precise, narrow language to reduce grounds for denial
-2. Cites the correct statute and relevant sections
-3. Specifies format preference (electronic, PDF)
-4. Includes fee waiver justification if applicable
-5. Sets reasonable scope to avoid "unduly burdensome" rejections
-"""
-    response = await anthropic_client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return parse_draft_response(response)
-```
-
-### Success Prediction Model
-
-A lightweight scoring model (not ML — rule-based to start):
+A lightweight scoring model is planned but deferred until real outcome data is available via Supabase:
 
 ```
 Score = weighted average of:
@@ -714,6 +685,8 @@ Score = weighted average of:
   - Similar request outcomes (15%)        # how did similar requests fare?
   - Jurisdiction strength (10%)           # federal FOIA vs weak state laws
 ```
+
+Currently, the `drafting_strategy` output provides qualitative reasoning about these factors instead of a numeric score, avoiding false precision from incomplete data.
 
 ---
 
@@ -1003,48 +976,59 @@ foia-fluent/
 
 ## Development Roadmap
 
-### Milestone 1: Foundation
+### Milestone 1: Foundation ✅
 
-- [ ] Set up monorepo structure (backend + frontend)
-- [ ] FastAPI skeleton with health check, config, CORS
-- [ ] Supabase project + initial schema migration
-- [ ] MuckRock API client with search endpoint
-- [ ] Basic Next.js frontend with search input and results display
+- [x] Set up monorepo structure (backend + frontend)
+- [x] FastAPI skeleton with health check, config, CORS
+- [x] MuckRock API client with search endpoint
+- [x] Basic Next.js frontend with search input and results display
+- [ ] Supabase project + initial schema migration *(deferred — using local JSON cache for MVP)*
 - [ ] Deploy to Railway + Vercel
 
 **Deliverable:** User can search MuckRock for existing FOIA requests from the web UI.
 
-### Milestone 2: Multi-Source Discovery
+### Milestone 2: Multi-Source Discovery ✅
 
-- [ ] DocumentCloud API integration
-- [ ] data.gov API integration
-- [ ] Parallel search orchestrator
-- [ ] Result deduplication and ranking
-- [ ] Search caching in Supabase
-- [ ] Semantic search setup (pgvector + embeddings)
+- [x] DocumentCloud API integration
+- [x] Tavily-powered web search integration *(replaced data.gov direct integration)*
+- [x] Parallel search orchestrator (`asyncio.gather` across all sources)
+- [x] Result deduplication and ranking
+- [x] Claude-powered query interpretation (intent summaries, agency/record type identification)
+- [x] Animated progress stepper UI
+- [ ] Search caching in Supabase *(deferred — no database yet)*
+- [ ] Semantic search setup (pgvector + embeddings) *(deferred — no database yet)*
 
-**Deliverable:** Unified search across all three sources with ranked, deduplicated results.
+**Deliverable:** Unified search across MuckRock, DocumentCloud, and web with Claude-powered query understanding and smart recommendations.
 
-### Milestone 3: Request Intelligence + State Law Engine
+### Milestone 3: Request Intelligence ✅
 
-- [ ] State Law Engine: seed federal FOIA + New York FOIL (structured law data)
-- [ ] Jurisdiction resolver (map agency -> correct law)
-- [ ] Agency database (seed top 50 federal agencies + NY state agencies)
-- [ ] Claude API integration for request drafting with jurisdiction-aware prompts
-- [ ] Success prediction scoring (jurisdiction strength as a factor)
-- [ ] Similar request finder (semantic search)
-- [ ] Request drafting UI (form + preview, shows applicable law)
+- [x] Federal agency database (20+ agencies with verified FOIA info from foia.gov)
+- [x] FOIA statute text embedded as verified context (5 U.S.C. § 552, all 9 exemptions)
+- [x] Claude API integration for request drafting with anti-hallucination safeguards
+- [x] MuckRock similar request finder (topic-specific via Tavily)
+- [x] Agency Intel Agent (agency-wide FOIA pattern research — denials, successes, exemptions)
+- [x] Parallel research agents running via `asyncio.gather`
+- [x] Persistent agency intelligence cache (JSON, 24h TTL, atomic writes)
+- [x] Request drafting UI (multi-step wizard: agency confirmation → details → draft review)
+- [x] AI interpretability ("How We Built This Draft" with reasoning transparency)
+- [ ] State Law Engine: seed New York FOIL *(deferred — federal FOIA only for now)*
+- [ ] Jurisdiction resolver (map agency → correct law) *(deferred)*
+- [ ] Success prediction scoring *(deferred — insufficient data for reliable scores)*
 
-**Deliverable:** User describes what they need, gets a jurisdiction-aware FOIA/FOIL request draft with correct statute citations and success prediction.
+**Deliverable:** User describes what they need, gets an optimized FOIA request letter drafted from verified legal context and MuckRock outcome intelligence.
 
-### Milestone 4: Response Tracking
+### Milestone 4: Response Tracking 🔧 *(In Progress)*
 
-- [ ] Request submission tracking (manual entry + MuckRock sync)
-- [ ] Communication timeline UI
-- [ ] Response analysis (Claude API)
-- [ ] Appeal letter generation
-- [ ] Deadline tracking with notifications
-- [ ] Follow-up letter generation
+- [ ] JSON-based request persistence (local store, Supabase migration path)
+- [ ] Request lifecycle tracking (draft → submitted → awaiting → fulfilled/denied)
+- [ ] Deadline calculator (20 business days, federal holidays)
+- [ ] Communication timeline logging
+- [ ] Claude-powered response analysis (completeness, exemption validity, appeal grounds)
+- [ ] Follow-up letter generation (overdue requests)
+- [ ] Appeal letter generation (denied requests)
+- [ ] Request dashboard page (status overview, deadline countdowns)
+- [ ] Request detail page (timeline, actions, analysis)
+- [ ] Navigation between search/draft and request tracking
 
 **Deliverable:** Full request lifecycle management from draft to resolution.
 
@@ -1061,20 +1045,22 @@ foia-fluent/
 
 ### Milestone 6: State Expansion
 
-- [ ] Add California (CPRA), Texas (PIA), Florida (Sunshine Law)
+- [ ] Add New York FOIL, California CPRA, Texas PIA, Florida Sunshine Law
 - [ ] Semi-automated law seeding pipeline (scrape + Claude extraction + human review)
-- [ ] State-specific agency databases for CA, TX, FL
+- [ ] State-specific agency databases
 - [ ] Jurisdiction comparison in Data Hub (which states are most/least transparent)
 - [ ] Cross-jurisdiction filing suggestions (file federal AND state simultaneously)
 
 **Deliverable:** Platform covers ~40% of US population across 5 jurisdictions.
 
-### Milestone 7: MCP + Polish
+### Milestone 7: Infrastructure + Polish
 
-- [ ] MCP server implementation (tool + resource definitions)
-- [ ] MCP client testing with Claude Desktop
+- [ ] Supabase migration (PostgreSQL + pgvector for semantic search)
 - [ ] Authentication and user management (Supabase Auth)
+- [ ] MCP server implementation (tool + resource definitions)
+- [ ] Success prediction model (rule-based, backed by real outcome data)
 - [ ] Rate limiting and error handling
+- [ ] Deploy to Railway + Vercel
 - [ ] Documentation and onboarding flow
 
-**Deliverable:** Production-ready MVP with MCP support.
+**Deliverable:** Production-ready platform with persistent storage and MCP support.

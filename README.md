@@ -18,70 +18,244 @@ The Freedom of Information Act promises government transparency, but the reality
 
 The information belongs to the public. The process shouldn't be this hard.
 
-## How It Works
+## What's Built
 
-FOIA Fluent guides users through five integrated phases — from finding existing documents to building collective transparency intelligence.
+### Phase 1: Document Discovery (Complete)
+
+Search across multiple public records sources before filing a new request.
 
 ```
-  USER (journalist, lawyer, researcher, organization)
-                        |
-                        v
-  +---------------------------------------------+
-  |  PHASE 1 : DOCUMENT DISCOVERY               |
-  |  Search MuckRock, DocumentCloud, data.gov,   |
-  |  agency reading rooms, and open requests.    |
-  |  Assess whether a FOIA filing is needed.     |
-  +---------------------------------------------+
-                        |
-            +-----------+-----------+
-            |                       |
-      Already exists          Not found
-            |                       |
-            v                       v
-      Direct to              +---------------------------------------------+
-      source                 |  PHASE 2 : REQUEST INTELLIGENCE             |
-                             |  Generate optimized request language.        |
-                             |  Predict success from similar past cases.    |
-                             |  Apply state-specific FOIA/public records    |
-                             |  laws. Strategy for sensitive agencies.      |
-                             +---------------------------------------------+
-                                                |
-                                                v
-                             +---------------------------------------------+
-                             |  PHASE 3 : RESPONSE & NEGOTIATION           |
-                             |  Track full correspondence timeline.         |
-                             |  Draft follow-up responses.                  |
-                             |  Detect improper redactions.                 |
-                             |  Guide appeals, mediation, litigation.       |
-                             +---------------------------------------------+
-                                                |
-                                  +-------------+-------------+
-                                  |                           |
-                              Fulfilled                 Blocked/Delayed
-                                  |                           |
-                                  |             +-------------+-------------+
-                                  |             |                           |
-                                  |   +-----------------------+   +-----------------------+
-                                  |   | PHASE 4 : BEYOND FOIA |   | PHASE 5 : DATA HUB   |
-                                  |   | Alt records pathways   |   | Trends by agency      |
-                                  |   | State-level options    |   | Denial & success rate |
-                                  |   | Journalist networks    |   | tracking              |
-                                  |   | Whistleblower &        |   | Benchmark vs.         |
-                                  |   | congressional paths    |   | historical outcomes   |
-                                  |   +-----------+-----------+   +-----------+-----------+
-                                  |               |                           |
-                                  +-------+-------+---------------------------+
-                                          |
-                                          v
-                             +---------------------------------------------+
-                             |  OUTCOME : GOVERNMENT ACCOUNTABILITY        |
-                             |  Documents released. Patterns exposed.       |
-                             |  Collective knowledge base grows.            |
-                             +---------------------------------------------+
-                                          |
-                                          |  Every outcome feeds back into
-                                          |  the system's intelligence
-                                          +-----------------------------------> PHASE 2
+User: "My family member died in ICE detention and I want records
+       about the circumstances of their death"
+                    |
+                    v
+         +--------------------+
+         | Query Interpreter  |  Claude parses intent, identifies
+         | (Claude API)       |  agencies (ICE, DHS) and record
+         +--------------------+  types (death reports, inspection
+                    |            records, medical files)
+                    v
+    +---------------+---------------+
+    |               |               |
+    v               v               v
++--------+    +-----------+    +--------+
+|MuckRock|    |DocumentCl.|    | Tavily |    Parallel search
+| API    |    |   API     |    | Search |    via asyncio.gather()
++--------+    +-----------+    +--------+
+    |               |               |
+    +---------------+---------------+
+                    |
+                    v
+         +--------------------+
+         | Result Merger      |  Deduplicate, rank by relevance,
+         | + Recommendation   |  assess: file new or use existing?
+         +--------------------+
+                    |
+                    v
+         Search results + "We recommend filing
+         a FOIA request to ICE for these records"
+```
+
+- **Multi-source parallel search** across MuckRock, DocumentCloud, and web sources
+- **Claude-powered query interpretation** — understands natural language, identifies relevant agencies and record types
+- **Smart recommendations** — tells users whether existing documents answer their question or if a new FOIA request is needed
+
+### Phase 2: AI-Assisted FOIA Request Drafting (Complete)
+
+Generate legally sound, optimized FOIA request letters using verified legal context and MuckRock outcome intelligence.
+
+```
+User confirms agency (ICE) + enters request details
+                    |
+                    v
+         +--------------------+
+         | Parallel Research  |  Two agents run simultaneously
+         | via asyncio.gather |  via asyncio.gather()
+         +----------+---------+
+                    |
+        +-----------+-----------+
+        |                       |
+        v                       v
++----------------+    +------------------+
+| Topic Agent    |    | Agency Intel     |
+| Searches for   |    | Agent            |
+| MuckRock reqs  |    | Researches ICE's |
+| on this exact  |    | overall FOIA     |
+| topic (ICE     |    | track record:    |
+| detention      |    | - denial rates   |
+| deaths)        |    | - exemptions     |
++----------------+    | - success        |
+        |             |   patterns       |
+        |             +------------------+
+        |                       |
+        +-----------+-----------+
+                    |
+                    v
+    +-------------------------------+
+    | Verified Context Assembly     |
+    |                               |
+    | 1. FOIA Statute (5 USC 552)   |  Actual statute text,
+    |    - All 9 exemptions         |  not summaries
+    |    - Fee waiver provisions    |
+    |    - Time limit rules         |
+    |                               |
+    | 2. Agency Info (from DB)      |  Verified FOIA portal,
+    |    - ICE FOIA email           |  email, regulations
+    |    - CFR regulation cite      |  from foia.gov
+    |    - Submission procedures    |
+    |                               |
+    | 3. MuckRock Intelligence      |  What worked, what
+    |    - Successful requests      |  didn't, common
+    |    - Denied requests          |  exemptions invoked
+    |    - Exemption patterns       |
+    +-------------------------------+
+                    |
+                    v
+         +--------------------+
+         | Claude Drafting    |  Generates letter using ONLY
+         | (claude-sonnet-4)  |  the verified context above.
+         |                    |  Zero hallucinated citations.
+         +--------------------+
+                    |
+                    v
+    +-------------------------------+
+    | Output                        |
+    | - Complete FOIA letter        |
+    | - Submission instructions     |
+    | - "How We Built This Draft"   |
+    |   (AI reasoning transparency) |
+    | - Similar requests found      |
+    | - Agency FOIA profile stats   |
+    +-------------------------------+
+```
+
+- **Anti-hallucination safeguards** — Claude drafts from three layers of verified context (statute text, agency regulations, MuckRock outcomes). It cannot cite law from its training data.
+- **Dual parallel research agents** — Topic Agent (subject-specific) + Agency Intel Agent (agency-wide FOIA patterns) run simultaneously
+- **Persistent agency intelligence cache** — 24-hour TTL, atomic writes. First request for an agency pays the research cost; subsequent requests are instant.
+- **AI interpretability** — "How We Built This Draft" section shows what the AI learned from successful requests, what denial patterns it avoided, scope decisions, and exemption risk mitigation
+- **Multi-step wizard UI** — agency confirmation → request details → draft review with copy-to-clipboard
+
+### Phase 3: Response & Negotiation Tracking (In Development)
+
+Track submitted requests and navigate agency responses.
+
+- Request lifecycle tracking (draft → submitted → awaiting response → fulfilled/denied)
+- Statutory deadline monitoring (20 business days for federal FOIA)
+- Communication timeline logging
+- Claude-powered response analysis (completeness, exemption validity, appeal grounds)
+- Follow-up letter generation when agencies miss deadlines
+- Appeal letter generation for denials
+
+### Future Phases
+
+- **Phase 4: Beyond FOIA** — alternative pathways when FOIA fails (congressional inquiries, state equivalents, inspector general complaints)
+- **Phase 5: Data Hub** — agency transparency metrics, exemption pattern analysis, public leaderboard
+
+## Architecture
+
+```
+Frontend (Next.js 14)          Backend (FastAPI)              External Services
+┌──────────────────┐          ┌──────────────────────┐       ┌─────────────────┐
+│                  │   HTTP   │                      │       │ Claude API      │
+│  Search + Draft  │ ──────> │  Query Interpreter    │ ────> │ (Anthropic)     │
+│  Wizard          │          │  FOIA Drafter         │       │                 │
+│  Request Tracker │          │  Agency Intel Agent   │       │ Tavily Search   │
+│  Dashboard       │          │  Response Analyzer    │       │ (MuckRock,      │
+│                  │ <────── │  Letter Generator     │       │  DocumentCloud) │
+│  Next.js App     │          │  Deadline Calculator  │       │                 │
+│  Router          │          │                      │       │ MuckRock API    │
+└──────────────────┘          │  Verified Data:       │       │ DocumentCloud   │
+                              │  - Federal agencies   │       │ API             │
+                              │  - FOIA statute text  │       └─────────────────┘
+                              │  - Agency intel cache │
+                              └──────────────────────┘
+```
+
+## Tech Stack
+
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| Backend | FastAPI (Python) | Async-native, built-in OpenAPI docs, Pydantic validation |
+| Frontend | Next.js 14 (React 18, TypeScript) | App Router, SSR, Vercel-ready |
+| AI | Claude API (claude-sonnet-4-20250514) | Large context window, structured output, strong at legal text |
+| Search | Tavily API | Domain-scoped web search across MuckRock and DocumentCloud |
+| Data | Local JSON cache (Supabase planned) | Zero-infrastructure MVP; swappable for PostgreSQL later |
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- API keys: Anthropic (Claude), Tavily
+
+### Setup
+
+```bash
+# Clone the repo
+git clone https://github.com/dssg-nyc/FOIA-Fluent.git
+cd FOIA-Fluent
+
+# Backend
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp ../.env.example .env
+# Edit .env with your API keys
+
+# Start backend
+uvicorn app.main:app --reload --port 8000
+
+# Frontend (new terminal)
+cd frontend
+npm install
+npm run dev -- --port 3005
+```
+
+Open [http://localhost:3005](http://localhost:3005) in your browser.
+
+### Environment Variables
+
+```
+ANTHROPIC_API_KEY=     # Required — Claude API for drafting and analysis
+TAVILY_API_KEY=        # Required — web search across MuckRock and DocumentCloud
+```
+
+## Project Structure
+
+```
+FOIA-Fluent/
+├── backend/
+│   └── app/
+│       ├── main.py                    # FastAPI entry point
+│       ├── config.py                  # Settings (env vars)
+│       ├── data/
+│       │   ├── federal_agencies.py    # Verified agency FOIA info
+│       │   └── federal_foia_statute.py # 5 U.S.C. § 552 statute text
+│       ├── models/
+│       │   ├── draft.py               # Draft/agency Pydantic models
+│       │   └── search.py              # Discovery Pydantic models
+│       ├── routes/
+│       │   ├── search.py              # Discovery endpoints
+│       │   └── draft.py               # Drafting endpoints
+│       └── services/
+│           ├── drafter.py             # Claude-powered FOIA drafting
+│           ├── agency_intel.py        # Agency FOIA pattern research + cache
+│           ├── query_interpreter.py   # Claude-powered query parsing
+│           ├── search.py              # Multi-source search orchestrator
+│           ├── muckrock.py            # MuckRock API client
+│           ├── documentcloud.py       # DocumentCloud API client
+│           └── tavily_search.py       # Tavily search client
+├── frontend/
+│   └── src/
+│       ├── app/
+│       │   ├── page.tsx               # Main search + draft wizard
+│       │   ├── globals.css            # Global styles
+│       │   └── layout.tsx             # App layout
+│       └── lib/
+│           └── api.ts                 # TypeScript API client
+└── implementation_strategy.md         # Full technical blueprint
 ```
 
 ## Who It's For
@@ -103,27 +277,20 @@ FOIA is just the federal law. Every US state has its own public records law with
 | California | CPRA (California Public Records Act) | 10-day deadline, "catch-all" exemption, strong fee waivers |
 | Texas | PIA (Public Information Act) | 10 business days, AG decides disputes, narrow exemptions |
 | Florida | Sunshine Law | No specific deadline, broad access, criminal penalties for violations |
-| ... | ... | 50 states + DC + territories |
 
-FOIA Fluent starts with **New York (FOIL)** and **federal FOIA**, then expands state by state. The platform automatically applies the correct law based on the target agency's jurisdiction — citing the right statute, enforcing the right deadlines, and knowing the right appeal body.
+Currently supporting **federal FOIA** with state expansion planned.
 
 ## Key Data Sources
 
 | Source | What It Provides |
 |--------|-----------------|
-| [MuckRock](https://www.muckrock.com) | Existing FOIA requests, agency response data, request templates |
+| [MuckRock](https://www.muckrock.com) | Existing FOIA requests, agency response data, outcome intelligence |
 | [DocumentCloud](https://www.documentcloud.org) | Searchable repository of public-interest documents |
-| [data.gov](https://data.gov) | Federal open data across agencies |
-| Agency reading rooms | Documents proactively disclosed by federal agencies |
-| State FOIA portals | State-level public records request systems |
-
-## Project Status
-
-FOIA Fluent is in **early development**. We are building the platform as open-source software with the goal of making government transparency accessible to everyone — not just those with legal expertise or institutional backing.
+| [Tavily](https://tavily.com) | Domain-scoped web search for research agents |
 
 ## Contributing
 
-This project is open source. If you're interested in civic tech, FOIA, or government accountability, we welcome contributions. See the issues tab or reach out.
+This project is open source under the [dssg-nyc](https://github.com/dssg-nyc) organization. If you're interested in civic tech, FOIA, or government accountability, we welcome contributions. See the issues tab or reach out.
 
 ## License
 
