@@ -26,6 +26,7 @@ out/
 
 # Runtime caches
 backend/app/data/agency_intel_cache.json
+backend/app/data/tracked_requests.json
 
 # OS
 .DS_Store
