@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   discover,
   identifyAgency,
@@ -14,6 +15,7 @@ import {
   DraftingStrategy,
   AgencyIntel,
 } from "@/lib/api";
+import { trackRequest } from "@/lib/tracking-api";
 
 const SOURCE_LABELS: Record<string, string> = {
   documentcloud: "DocumentCloud",
@@ -46,6 +48,7 @@ type DraftPhase =
   | "review-draft";
 
 export default function Home() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [data, setData] = useState<DiscoveryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,6 +62,7 @@ export default function Home() {
   const [selectedAgency, setSelectedAgency] = useState<AgencyInfo | null>(null);
   const [draftResult, setDraftResult] = useState<DraftResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
 
   // Draft form fields
   const [requesterName, setRequesterName] = useState("");
@@ -140,6 +144,45 @@ export default function Home() {
     await navigator.clipboard.writeText(draftResult.letter_text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleTrackRequest() {
+    if (!draftResult || !selectedAgency) return;
+    setIsTracking(true);
+    try {
+      const detail = await trackRequest({
+        title: recordsDescription.slice(0, 80) + (recordsDescription.length > 80 ? "..." : ""),
+        description: recordsDescription,
+        agency: selectedAgency,
+        letter_text: draftResult.letter_text,
+        requester_name: requesterName,
+        requester_organization: requesterOrg,
+        // Phase 2 research intelligence
+        statute_cited: draftResult.statute_cited,
+        key_elements: draftResult.key_elements,
+        tips: draftResult.tips,
+        submission_info: draftResult.submission_info,
+        similar_requests: draftResult.similar_requests,
+        drafting_strategy: draftResult.drafting_strategy,
+        agency_intel: draftResult.agency_intel,
+        // Phase 1 discovery results
+        discovery_results: data?.steps.flatMap((s) =>
+          s.results.map((r) => ({
+            title: r.title || "",
+            url: r.url,
+            source: r.source,
+            description: r.description,
+            agency: r.agency,
+            date: r.date,
+            status: r.status,
+          }))
+        ) ?? [],
+      });
+      router.push(`/requests/${detail.request.id}`);
+    } catch {
+      setDraftError("Failed to save request for tracking. Please try again.");
+      setIsTracking(false);
+    }
   }
 
   return (
@@ -286,6 +329,8 @@ export default function Home() {
               copied={copied}
               onCopy={handleCopy}
               onStartOver={resetDraft}
+              onTrack={handleTrackRequest}
+              isTracking={isTracking}
             />
           )}
 
@@ -578,11 +623,15 @@ function DraftReview({
   copied,
   onCopy,
   onStartOver,
+  onTrack,
+  isTracking,
 }: {
   draft: DraftResponse;
   copied: boolean;
   onCopy: () => void;
   onStartOver: () => void;
+  onTrack: () => void;
+  isTracking: boolean;
 }) {
   const strategy = draft.drafting_strategy;
   const intel = draft.agency_intel;
@@ -837,6 +886,13 @@ function DraftReview({
       )}
 
       <div className="wizard-actions">
+        <button
+          className="draft-button"
+          onClick={onTrack}
+          disabled={isTracking}
+        >
+          {isTracking ? "Saving..." : "Track This Request"}
+        </button>
         <button className="wizard-cancel" onClick={onStartOver}>
           Start Over
         </button>
