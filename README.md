@@ -135,16 +135,63 @@ User confirms agency (ICE) + enters request details
 - **AI interpretability** — "How We Built This Draft" section shows what the AI learned from successful requests, what denial patterns it avoided, scope decisions, and exemption risk mitigation
 - **Multi-step wizard UI** — agency confirmation → request details → draft review with copy-to-clipboard
 
-### Phase 3: Response & Negotiation Tracking (In Development)
+### Phase 3: Response & Negotiation Tracking (Complete)
 
-Track submitted requests and navigate agency responses.
+Track submitted requests from filing to resolution, with Claude-powered response analysis and letter generation.
 
-- Request lifecycle tracking (draft → submitted → awaiting response → fulfilled/denied)
-- Statutory deadline monitoring (20 business days for federal FOIA)
-- Communication timeline logging
-- Claude-powered response analysis (completeness, exemption validity, appeal grounds)
-- Follow-up letter generation when agencies miss deadlines
-- Appeal letter generation for denials
+```
+User clicks "Track This Request" after drafting
+                    |
+                    v
+         +--------------------+
+         | Request Store      |  Saved to local JSON with all Phase 1+2
+         | (JSON persistence) |  research context preserved for reference
+         +--------------------+
+                    |
+          +---------+---------+
+          |                   |
+          v                   v
+  +---------------+   +----------------+
+  | /dashboard    |   | /requests/[id] |
+  |               |   |                |
+  | All requests  |   | Deadline card  |
+  | Filter tabs:  |   | Action panel   |
+  | All/Active/   |   | Research       |
+  | Overdue/Done  |   | Context        |
+  +---------------+   +----------------+
+                              |
+              +---------------+---------------+
+              |               |               |
+              v               v               v
+    +--------------+  +--------------+  +----------+
+    | Mark         |  | I Received   |  | Generate |
+    | Submitted    |  | a Response   |  | Letter   |
+    | (date picker)|  |              |  |          |
+    +--------------+  +------+-------+  +----------+
+                             |
+                             v
+                    +------------------+
+                    | Response Analyzer|  Claude evaluates:
+                    | (Claude API)     |  - Completeness
+                    +------------------+  - Exemption validity
+                             |            - Missing records
+                             v            - Appeal grounds
+                    +------------------+
+                    | Letter Generator |  follow_up: cites
+                    | (Claude API)     |  overdue deadline
+                    +------------------+  appeal: challenges
+                             |            each exemption
+                             v
+                    Auto-logged as
+                    communication entry
+```
+
+- **Deadline monitoring** — calculates 20 business-day statutory deadline, skipping weekends and federal holidays 2025–2027
+- **Research context preserved** — all Phase 1 discovery results and Phase 2 intelligence (similar requests, agency FOIA profile, drafting strategy, submission guide) travel with the request so users have full reference while negotiating
+- **Claude response analysis** — evaluates agency response for completeness, validates each exemption cited, identifies missing records, and recommends accept / follow-up / appeal / negotiate scope
+- **Letter generation** — follow-up letters cite the statutory deadline and days elapsed; appeal letters challenge each exemption with legal reasoning and reference OGIS mediation
+- **Communication timeline** — chronological log of all outgoing/incoming correspondence, expandable per entry
+- **Dashboard** — lists all tracked requests with overdue-first sorting, status badges, and filter tabs
 
 ### Future Phases
 
@@ -235,10 +282,12 @@ FOIA-Fluent/
 │       │   └── federal_foia_statute.py # 5 U.S.C. § 552 statute text
 │       ├── models/
 │       │   ├── draft.py               # Draft/agency Pydantic models
-│       │   └── search.py              # Discovery Pydantic models
+│       │   ├── search.py              # Discovery Pydantic models
+│       │   └── tracking.py            # Request tracking + communication models
 │       ├── routes/
 │       │   ├── search.py              # Discovery endpoints
-│       │   └── draft.py               # Drafting endpoints
+│       │   ├── draft.py               # Drafting endpoints
+│       │   └── tracking.py            # Request lifecycle endpoints
 │       └── services/
 │           ├── drafter.py             # Claude-powered FOIA drafting
 │           ├── agency_intel.py        # Agency FOIA pattern research + cache
@@ -246,15 +295,26 @@ FOIA-Fluent/
 │           ├── search.py              # Multi-source search orchestrator
 │           ├── muckrock.py            # MuckRock API client
 │           ├── documentcloud.py       # DocumentCloud API client
-│           └── tavily_search.py       # Tavily search client
+│           ├── tavily_search.py       # Tavily search client
+│           ├── request_store.py       # JSON-backed request persistence
+│           ├── deadline_calculator.py # 20 business-day FOIA deadline logic
+│           ├── response_analyzer.py   # Claude-powered response analysis
+│           └── letter_generator.py    # Follow-up and appeal letter generation
 ├── frontend/
 │   └── src/
 │       ├── app/
 │       │   ├── page.tsx               # Main search + draft wizard
 │       │   ├── globals.css            # Global styles
-│       │   └── layout.tsx             # App layout
+│       │   ├── layout.tsx             # App layout with Nav
+│       │   ├── dashboard/
+│       │   │   └── page.tsx           # My Requests dashboard
+│       │   └── requests/[id]/
+│       │       └── page.tsx           # Request detail page
+│       ├── components/
+│       │   └── Nav.tsx                # Sticky nav with active state
 │       └── lib/
-│           └── api.ts                 # TypeScript API client
+│           ├── api.ts                 # Discovery + drafting API client
+│           └── tracking-api.ts        # Request tracking API client
 └── implementation_strategy.md         # Full technical blueprint
 ```
 
