@@ -109,6 +109,23 @@ class GenerateLetterPayload(BaseModel):
     context: str = ""
 
 
+class ImportRequestPayload(BaseModel):
+    """Payload for importing an existing FOIA request into the tracking system.
+
+    Unlike TrackRequestPayload (which carries already-computed research context
+    from the draft wizard), ImportRequestPayload triggers a fresh research pipeline
+    + letter analysis on the backend.
+    """
+    title: str
+    description: str        # What records you're seeking — used to power research
+    agency_abbreviation: str
+    letter_text: str
+    requester_name: str
+    requester_organization: str = ""
+    filed_date: Optional[str] = None        # ISO date, if already submitted
+    existing_response: Optional[str] = None # Agency response text, if already received
+
+
 # ── Response shapes ────────────────────────────────────────────────────────────
 
 class TrackedRequestDetail(BaseModel):

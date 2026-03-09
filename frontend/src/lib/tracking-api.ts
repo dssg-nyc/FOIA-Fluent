@@ -2,6 +2,8 @@ import type { SimilarRequest, DraftingStrategy, AgencyIntel } from "@/lib/api";
 
 export type { SimilarRequest, DraftingStrategy, AgencyIntel };
 
+import { getAccessToken } from "@/lib/supabase";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -15,6 +17,7 @@ export interface AgencyInfo {
   description: string;
   foia_regulation: string;
   submission_notes: string;
+  cfr_available: boolean;
 }
 
 export interface DiscoveryResult {
@@ -149,12 +152,31 @@ export interface GenerateLetterPayload {
   context?: string;
 }
 
+export interface ImportRequestPayload {
+  title: string;
+  description: string;
+  agency_abbreviation: string;
+  letter_text: string;
+  requester_name: string;
+  requester_organization?: string;
+  filed_date?: string;
+  existing_response?: string;
+}
+
 // ── API calls ──────────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = await getAccessToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options?.headers as Record<string, string>),
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const res = await fetch(`${API_URL}/api/v1${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -219,6 +241,15 @@ export async function generateLetter(
   payload: GenerateLetterPayload
 ): Promise<GeneratedLetter> {
   return apiFetch(`/tracking/requests/${id}/generate-letter`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function importRequest(
+  payload: ImportRequestPayload
+): Promise<TrackedRequestDetail> {
+  return apiFetch("/tracking/requests/import", {
     method: "POST",
     body: JSON.stringify(payload),
   });

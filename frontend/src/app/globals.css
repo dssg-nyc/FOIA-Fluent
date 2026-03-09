@@ -1579,6 +1579,56 @@ body {
   margin: 0 0 1rem 0;
 }
 
+.cfr-missing-notice {
+  display: flex;
+  gap: 0.75rem;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.875rem;
+}
+
+.cfr-missing-icon {
+  flex-shrink: 0;
+  color: #d97706;
+  font-size: 1.1rem;
+  line-height: 1.4;
+}
+
+.cfr-missing-body {
+  flex: 1;
+  color: #78350f;
+}
+
+.cfr-missing-body strong {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #92400e;
+}
+
+.cfr-missing-body p {
+  margin: 0 0 0.5rem;
+  line-height: 1.55;
+}
+
+.cfr-missing-body p:last-of-type {
+  margin-bottom: 0.75rem;
+}
+
+.cfr-missing-email {
+  display: inline-block;
+  color: #b45309;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cfr-missing-email:hover {
+  color: #92400e;
+}
+
 .research-subsection {
   border-top: 1px solid var(--border);
   padding-top: 1rem;
@@ -1604,4 +1654,145 @@ body {
   font-size: 0.85rem;
   color: #374151;
   line-height: 1.6;
+}
+
+/* ── Login page ── */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+  padding: 1rem;
+}
+
+.login-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.06);
+}
+
+.login-card h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem 0;
+  color: var(--foreground);
+}
+
+.login-subtitle {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin: 0 0 1.75rem 0;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.login-form input[type="email"] {
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.login-form input[type="email"]:focus {
+  border-color: var(--primary);
+}
+
+.login-form button {
+  padding: 0.65rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.login-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-error {
+  color: #dc2626;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.login-hint {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  margin: 0.5rem 0 0 0;
+  text-align: center;
+}
+
+/* ── Nav user / sign out ── */
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-user-email {
+  font-size: 0.8rem;
+  color: #6b7280;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-signout {
+  font-size: 0.8rem;
+  color: #6b7280;
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-signout:hover {
+  background: #f3f4f6;
+  color: var(--foreground);
+}
+
+/* ── Import page ── */
+.import-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .import-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.import-letter {
+  font-family: monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* ── Dashboard action buttons ── */
+.dashboard-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
 }

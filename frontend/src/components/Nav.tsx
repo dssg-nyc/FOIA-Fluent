@@ -1,10 +1,36 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 export default function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_, session) => {
+        setUserEmail(session?.user?.email ?? null);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function handleSignOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
 
   return (
     <nav className="site-nav">
@@ -21,11 +47,23 @@ export default function Nav() {
           </Link>
           <Link
             href="/dashboard"
-            className={`nav-link ${pathname.startsWith("/dashboard") || pathname.startsWith("/requests") ? "nav-link-active" : ""}`}
+            className={`nav-link ${
+              pathname.startsWith("/dashboard") || pathname.startsWith("/requests")
+                ? "nav-link-active"
+                : ""
+            }`}
           >
             My Requests
           </Link>
         </div>
+        {userEmail && (
+          <div className="nav-user">
+            <span className="nav-user-email">{userEmail}</span>
+            <button className="nav-signout" onClick={handleSignOut}>
+              Sign out
+            </button>
+          </div>
+        )}
       </div>
     </nav>
   );

@@ -173,7 +173,7 @@ export default function Home() {
             source: r.source,
             description: r.description,
             agency: r.agency,
-            date: r.date,
+            date: r.date ?? undefined,
             status: r.status,
           }))
         ) ?? [],

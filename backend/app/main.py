@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 from app.config import settings
-from app.routes import search, draft, tracking
+from app.routes import admin, search, draft, tracking
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ app.add_middleware(
 app.include_router(search.router, prefix="/api/v1")
 app.include_router(draft.router, prefix="/api/v1")
 app.include_router(tracking.router, prefix="/api/v1")
+app.include_router(admin.router, prefix="/api/v1")
 
 
 @app.get("/health")

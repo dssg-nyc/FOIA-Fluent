@@ -5,7 +5,7 @@ import logging
 import anthropic
 from tavily import AsyncTavilyClient
 
-from app.data.federal_agencies import FEDERAL_AGENCIES, get_agency_summary
+from app.services.agency_profiles import get_agency_profile, get_agency_summary
 from app.data.federal_foia_statute import FOIA_STATUTE
 from app.models.draft import AgencyInfo, SimilarRequest
 from app.services.agency_intel import AgencyIntelAgent
@@ -37,10 +37,11 @@ Return this exact format:
 
 Rules:
 - Pick the single BEST matching agency as primary
+- Always prefer a specific sub-agency over its parent department when available (e.g., prefer "ICE" over "DHS", "FBI" over "DOJ", "FDA" over "HHS")
 - List 0-2 alternatives if records might also be held by other agencies
 - Use ONLY abbreviation codes from the list above (e.g. "ICE", "EPA", "FBI")
 - If the user's request spans multiple agencies, pick the most relevant as primary and list others as alternatives
-- If no agency in the list is appropriate, use the closest match and explain in reasoning"""
+- If the user asks about an agency NOT in this list (e.g. a sub-component we don't have listed), use the closest parent agency that IS in the list and note in your reasoning that the user should verify whether there is a more specific component office to contact directly. Add this guidance to your reasoning — never refuse or return an error."""
 
 DRAFT_PROMPT = """You are a FOIA request drafting expert. Generate a formal, legally sound FOIA request letter optimized for success.
 
@@ -64,6 +65,12 @@ FOIA Regulation: {agency_regulation}
 FOIA Website: {agency_website}
 FOIA Email: {agency_email}
 Submission Notes: {agency_notes}
+CFR Regulation Summary: {agency_cfr_summary}
+Exemption Tendencies: {agency_exemption_tendencies}
+Routing Notes: {agency_routing_notes}
+
+VERBATIM CFR REGULATION TEXT (from eCFR — use this as the authoritative source for this agency's FOIA procedures, deadlines, and fee schedules):
+{agency_cfr_text}
 
 === SIMILAR PAST REQUESTS ON THIS TOPIC (from MuckRock) ===
 
@@ -125,10 +132,10 @@ def _parse_json(text: str) -> dict:
 def _build_statute_sections() -> str:
     """Format statute sections for the prompt."""
     lines = []
-    for key, section in FOIA_STATUTE["sections"].items():
+    for section in FOIA_STATUTE["sections"].values():
         lines.append(f"[{section['cite']}]\n{section['text']}\n")
     lines.append("EXEMPTIONS:")
-    for key, exemption in FOIA_STATUTE["exemptions"].items():
+    for exemption in FOIA_STATUTE["exemptions"].values():
         lines.append(f"[{exemption['cite']}] {exemption['name']}: {exemption['text']}\n")
     return "\n".join(lines)
 
@@ -161,9 +168,9 @@ class FOIADrafter:
 
         parsed = _parse_json(message.content[0].text)
 
-        # Resolve abbreviations to full agency info
+        # Resolve abbreviations to full agency info (Supabase-first via get_agency_profile)
         primary_abbr = parsed["primary"]["abbreviation"]
-        primary_data = FEDERAL_AGENCIES.get(primary_abbr, {})
+        primary_data = get_agency_profile(primary_abbr) or {}
 
         primary_agency = AgencyInfo(
             name=primary_data.get("name", primary_abbr),
@@ -174,12 +181,13 @@ class FOIADrafter:
             description=primary_data.get("description", ""),
             foia_regulation=primary_data.get("foia_regulation", ""),
             submission_notes=primary_data.get("submission_notes", ""),
+            cfr_available=bool(primary_data.get("cfr_text", "")),
         )
 
         alternatives = []
         for alt in parsed.get("alternatives", []):
             alt_abbr = alt["abbreviation"]
-            alt_data = FEDERAL_AGENCIES.get(alt_abbr, {})
+            alt_data = get_agency_profile(alt_abbr) or {}
             if alt_data:
                 alternatives.append(AgencyInfo(
                     name=alt_data.get("name", alt_abbr),
@@ -190,6 +198,7 @@ class FOIADrafter:
                     description=alt_data.get("description", ""),
                     foia_regulation=alt_data.get("foia_regulation", ""),
                     submission_notes=alt_data.get("submission_notes", ""),
+                    cfr_available=bool(alt_data.get("cfr_text", "")),
                 ))
 
         reasoning = parsed["primary"].get("reasoning", "")
@@ -309,6 +318,9 @@ class FOIADrafter:
             else "No expedited processing request"
         )
 
+        # Pull extended agency fields — Supabase first, Python dict fallback
+        agency_data = get_agency_profile(agency.abbreviation) or {}
+
         system_prompt = DRAFT_PROMPT.format(
             statute_title=FOIA_STATUTE["title"],
             statute_citation=FOIA_STATUTE["citation"],
@@ -319,6 +331,10 @@ class FOIADrafter:
             agency_website=agency.foia_website,
             agency_email=agency.foia_email,
             agency_notes=agency.submission_notes,
+            agency_cfr_summary=agency_data.get("cfr_summary", "See agency FOIA regulation above."),
+            agency_exemption_tendencies=agency_data.get("exemption_tendencies", "No agency-specific exemption data available."),
+            agency_routing_notes=agency_data.get("routing_notes", "Submit to the agency FOIA office listed above."),
+            agency_cfr_text=agency_data.get("cfr_text", "") or "CFR text not yet loaded — run seed_agency_profiles.py before deployment.",
             similar_requests_context=similar_context,
             agency_intel_context=agency_intel_context,
             fee_waiver_instruction=fee_waiver_instruction,

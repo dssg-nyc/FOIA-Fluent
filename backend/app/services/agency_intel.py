@@ -9,6 +9,7 @@ from tavily import AsyncTavilyClient
 
 logger = logging.getLogger(__name__)
 
+# Local JSON file — used as fallback when Supabase is not configured (local dev)
 CACHE_FILE = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "data", "agency_intel_cache.json"
 )
@@ -146,7 +147,33 @@ class AgencyIntelAgent:
         }
 
     def _read_cache(self, abbreviation: str) -> dict | None:
-        """Read cached intel if it exists and is fresh."""
+        """Read cached intel if it exists and is fresh.
+
+        Tries Supabase first, falls back to the local JSON file.
+        """
+        # Try Supabase cache
+        try:
+            from app.services.agency_profiles import _get_supabase
+            sb = _get_supabase()
+            if sb:
+                result = (
+                    sb.table("agency_intel_cache")
+                    .select("data, cached_at")
+                    .eq("agency_abbreviation", abbreviation)
+                    .single()
+                    .execute()
+                )
+                if result.data:
+                    cached_at_str = result.data["cached_at"]
+                    cached_time = datetime.fromisoformat(cached_at_str.replace("Z", "+00:00"))
+                    age_hours = (datetime.now(timezone.utc) - cached_time).total_seconds() / 3600
+                    if age_hours <= CACHE_TTL_HOURS:
+                        return result.data["data"]
+                return None  # Supabase configured but cache miss/stale
+        except Exception as e:
+            logger.debug(f"Supabase cache read failed ({e}), trying local file")
+
+        # Fallback: local JSON file
         try:
             if not os.path.exists(CACHE_FILE):
                 return None
@@ -156,18 +183,34 @@ class AgencyIntelAgent:
             if not entry or not entry.get("cached_at"):
                 return None
             cached_time = datetime.fromisoformat(entry["cached_at"])
-            age_hours = (
-                datetime.now(timezone.utc) - cached_time
-            ).total_seconds() / 3600
+            age_hours = (datetime.now(timezone.utc) - cached_time).total_seconds() / 3600
             if age_hours > CACHE_TTL_HOURS:
                 return None
             return entry
         except Exception as e:
-            logger.warning(f"Cache read failed: {e}")
+            logger.warning(f"Local cache read failed: {e}")
             return None
 
     def _write_cache(self, abbreviation: str, intel: dict) -> None:
-        """Write intel to cache file with atomic write."""
+        """Write intel to cache.
+
+        Tries Supabase first, falls back to the local JSON file.
+        """
+        # Try Supabase cache
+        try:
+            from app.services.agency_profiles import _get_supabase
+            sb = _get_supabase()
+            if sb:
+                sb.table("agency_intel_cache").upsert({
+                    "agency_abbreviation": abbreviation,
+                    "data": intel,
+                    "cached_at": datetime.now(timezone.utc).isoformat(),
+                }).execute()
+                return
+        except Exception as e:
+            logger.debug(f"Supabase cache write failed ({e}), writing to local file")
+
+        # Fallback: local JSON file with atomic write
         try:
             cache = {}
             if os.path.exists(CACHE_FILE):
@@ -176,7 +219,6 @@ class AgencyIntelAgent:
 
             cache[abbreviation] = intel
 
-            # Atomic write: write to temp, then rename
             cache_dir = os.path.dirname(CACHE_FILE)
             fd, tmp_path = tempfile.mkstemp(dir=cache_dir, suffix=".tmp")
             try:
@@ -187,7 +229,7 @@ class AgencyIntelAgent:
                 os.unlink(tmp_path)
                 raise
         except Exception as e:
-            logger.warning(f"Cache write failed: {e}")
+            logger.warning(f"Local cache write failed: {e}")
 
     def format_for_prompt(self, intel: dict) -> str:
         """Format agency intelligence for Claude's context."""

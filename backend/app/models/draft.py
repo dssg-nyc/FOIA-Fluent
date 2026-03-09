@@ -10,6 +10,7 @@ class AgencyInfo(BaseModel):
     description: str = ""
     foia_regulation: str = ""
     submission_notes: str = ""
+    cfr_available: bool = True  # False when eCFR has no published regulation for this agency
 
 
 class AgencyIdentifyRequest(BaseModel):

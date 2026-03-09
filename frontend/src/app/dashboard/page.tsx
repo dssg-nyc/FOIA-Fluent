@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { listRequests, TrackedRequestDetail } from "@/lib/tracking-api";
+import AuthGuard from "@/components/AuthGuard";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -68,6 +69,7 @@ export default function Dashboard() {
   });
 
   return (
+    <AuthGuard>
     <main className="container">
       <div className="dashboard-header">
         <div>
@@ -76,9 +78,14 @@ export default function Dashboard() {
             Track submissions, monitor deadlines, and manage responses
           </p>
         </div>
-        <Link href="/" className="draft-button">
-          + New Request
-        </Link>
+        <div className="dashboard-actions">
+          <Link href="/import" className="wizard-cancel">
+            Track Existing Request
+          </Link>
+          <Link href="/" className="draft-button">
+            + New Request
+          </Link>
+        </div>
       </div>
 
       <div className="filter-tabs">
@@ -122,6 +129,7 @@ export default function Dashboard() {
         ))}
       </ul>
     </main>
+    </AuthGuard>
   );
 }
 

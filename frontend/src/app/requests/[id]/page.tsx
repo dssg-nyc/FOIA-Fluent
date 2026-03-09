@@ -17,6 +17,7 @@ import {
   AgencyIntel,
   DiscoveryResult,
 } from "@/lib/tracking-api";
+import AuthGuard from "@/components/AuthGuard";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -188,6 +189,7 @@ export default function RequestDetail() {
   }
 
   return (
+    <AuthGuard>
     <main className="container">
       {/* ── Header ── */}
       <div className="detail-header">
@@ -487,6 +489,7 @@ export default function RequestDetail() {
         </div>
       </details>
     </main>
+    </AuthGuard>
   );
 }
 
@@ -536,6 +539,32 @@ function ResearchContext({
       <p className="research-context-subtitle">
         Intelligence gathered when drafting this request — use as reference while communicating with the agency.
       </p>
+
+      {/* CFR regulation notice for agencies without published eCFR text */}
+      {request.agency.cfr_available === false && (
+        <div className="cfr-missing-notice">
+          <div className="cfr-missing-icon">ⓘ</div>
+          <div className="cfr-missing-body">
+            <strong>Regulation text not yet available for {request.agency.name}</strong>
+            <p>
+              The eCFR (Electronic Code of Federal Regulations) does not publish a FOIA-specific
+              regulation for <strong>{request.agency.abbreviation}</strong>. This typically means the agency
+              handles FOIA requests under its parent department&apos;s procedures rather than its own published CFR part.
+            </p>
+            <p>
+              We&apos;re using all available information — MuckRock request outcomes, agency exemption
+              patterns, and the parent statute — to inform this analysis. We&apos;re actively working to
+              add regulation data for agencies not yet covered.
+            </p>
+            <a
+              className="cfr-missing-email"
+              href={`mailto:foia-fluent@dssg.io?subject=Missing CFR regulation: ${request.agency.abbreviation}&body=Hi,%0A%0AI noticed that FOIA Fluent doesn't have CFR regulation text for ${request.agency.name} (${request.agency.abbreviation}). Could you add it?%0A%0AThanks`}
+            >
+              Notify us about this gap →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* A: Submission Guide */}
       {hasSubmission && (
