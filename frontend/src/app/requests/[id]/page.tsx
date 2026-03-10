@@ -281,7 +281,7 @@ export default function RequestDetail() {
       {actionError && <div className="error-message">{actionError}</div>}
 
       {/* ── Actions ── */}
-      {!isResolved && (
+      {!isResolved && (status === "draft" || showSubmitForm || canGenerateFollowUp) && (
         <div className="action-panel">
           {status === "draft" && !showSubmitForm && (
             <button className="draft-button" onClick={() => setShowSubmitForm(true)}>
@@ -329,7 +329,8 @@ export default function RequestDetail() {
         </div>
       )}
 
-      {/* ── Log Communication (always available) ── */}
+      {/* ── Log Communication (only after at least one communication exists) ── */}
+      {communications.length > 0 && (
       <div className="action-panel">
         <button
           className="wizard-cancel"
@@ -420,12 +421,19 @@ export default function RequestDetail() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Communication Timeline ── */}
       <div className="timeline-section">
         <h3>Timeline</h3>
         {communications.length === 0 ? (
-          <p className="timeline-empty">No communications logged yet.</p>
+          <div className="timeline-empty">
+            {status === "draft" ? (
+              <p>Once you&apos;ve sent your FOIA request to the agency, click <strong>Mark as Submitted</strong> above to start tracking it.</p>
+            ) : (
+              <p>No communications logged yet.</p>
+            )}
+          </div>
         ) : (
           <ul className="timeline-list">
             {[...communications]
