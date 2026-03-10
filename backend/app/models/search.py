@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from app.models.draft import AgencyInfo, AgencyIntel, SimilarRequest
+
 
 class SearchRequest(BaseModel):
     query: str
@@ -39,3 +41,9 @@ class DiscoveryResponse(BaseModel):
     record_types: list[str]  # types of records to look for
     steps: list[DiscoveryStep]
     recommendation: str  # what the user should do next
+    # Auto-identified agency and research (populated during discovery)
+    agency: AgencyInfo | None = None
+    alternatives: list[AgencyInfo] = []
+    agency_reasoning: str = ""
+    similar_requests: list[SimilarRequest] = []
+    agency_intel: AgencyIntel | None = None

@@ -2,6 +2,8 @@
 
 ### A civic AI platform that cuts through government opacity — finding existing public records, drafting optimized requests under federal and state transparency laws, and tracking agency responses so documents reach the people who need them.
 
+Built by [NYC-DSSG](https://www.nyc-dssg.org/) (Data Science for Social Good).
+
 ---
 
 ## The Problem
@@ -18,12 +20,14 @@ The information belongs to the public. The process shouldn't be this hard.
 
 ## What's Built
 
-### Phase 1: Document Discovery (Complete)
+### Phase 1: Document Discovery & Agency Identification (Complete)
 
-Search across multiple public records sources before filing a new request.
+Intelligent search that auto-identifies the best agency and finds relevant prior FOIA requests before filing a new one.
 
-- **Multi-source parallel search** across MuckRock, DocumentCloud, and web sources
-- **Claude-powered query interpretation** — understands natural language, identifies relevant agencies and record types
+- **Claude-powered query interpretation** — understands natural language, identifies relevant agencies and record types, generates targeted search queries
+- **Automatic agency identification** — Claude identifies the best federal agency for the request, with alternatives and reasoning
+- **Agency-scoped similar request search** — uses the interpreter's optimized queries to find relevant prior FOIA requests on MuckRock, scoped to the identified agency
+- **Multi-source parallel search** across MuckRock, DocumentCloud, and government/news sites via Tavily
 - **Smart recommendations** — tells users whether existing documents answer their question or if a new FOIA request is needed
 
 ### Phase 2: AI-Assisted FOIA Request Drafting (Complete)
@@ -31,7 +35,8 @@ Search across multiple public records sources before filing a new request.
 Generate legally sound, optimized FOIA request letters using verified legal context and MuckRock outcome intelligence.
 
 - **Anti-hallucination safeguards** — Claude drafts from three layers of verified context (statute text, agency CFR regulations fetched from eCFR, MuckRock outcomes). It cannot cite law from its training data.
-- **Dual parallel research agents** — Topic Agent (subject-specific) + Agency Intel Agent (agency-wide FOIA patterns) run simultaneously
+- **Unified research flow** — discovery's similar requests are passed directly to draft generation when the agency matches, avoiding duplicate searches. When the user picks a different agency, the draft re-fetches.
+- **Agency-wide pattern research** — separate from similar requests, this analyzes successful/denied/exemption-related FOIA outcomes for the target agency to inform drafting strategy
 - **Persistent agency intelligence cache** — 24-hour TTL, atomic writes. First request for an agency pays the research cost; subsequent requests are instant.
 - **AI interpretability** — "How We Built This Draft" section shows what the AI learned from successful requests, what denial patterns it avoided, scope decisions, and exemption risk mitigation
 - **Multi-step wizard UI** — agency confirmation → request details → draft review with copy-to-clipboard
@@ -45,15 +50,22 @@ Track submitted requests from filing to resolution, with Claude-powered response
 - **Deadline monitoring** — calculates 20 business-day statutory deadline, skipping weekends and federal holidays 2025–2027
 - **Research context preserved** — all Phase 1 discovery results and Phase 2 intelligence (similar requests, agency FOIA profile, drafting strategy, submission guide) travel with the request
 - **Claude response analysis** — evaluates agency response for completeness, validates each exemption cited, identifies missing records, and recommends accept / follow-up / appeal / negotiate scope
-- **Letter generation** — follow-up letters cite the statutory deadline and days elapsed; appeal letters challenge each exemption with legal reasoning and reference OGIS mediation
-- **Communication timeline** — chronological log of all outgoing/incoming correspondence
-- **Import existing requests** — bring in-flight requests into the system with full research pipeline analysis and optional immediate response analysis
-- **Dashboard** — lists all tracked requests with overdue-first sorting, status badges, and filter tabs
+- **Inline letter generation** — appeal and follow-up letters appear directly in the communication timeline card, not as a separate section
+- **Communication timeline** — chronological log of all outgoing/incoming correspondence with delete confirmation modals
+
+### Phase 4: Import Existing Requests (Complete)
+
+Bring in-flight FOIA requests into the system with full research pipeline analysis.
+
+- **Constrained agency dropdown** — searchable dropdown limited to 50+ federal agencies with backend regulation data, ensuring accurate analysis
+- **Automatic research pipeline** — runs similar request search, agency intel, and request analysis during import
+- **Optional immediate response analysis** — if an agency response exists, run Claude analysis on import
+- **File upload support** — attach FOIA letters and agency responses (DOCX, PDF, TXT, images)
 
 ### Future Phases
 
-- **Phase 4: Beyond FOIA** — alternative pathways when FOIA fails (congressional inquiries, state equivalents, inspector general complaints)
-- **Phase 5: Data Hub** — agency transparency metrics, exemption pattern analysis, public leaderboard
+- **Phase 5: Beyond FOIA** — alternative pathways when FOIA fails (congressional inquiries, state equivalents, inspector general complaints)
+- **Phase 6: Data Hub** — agency transparency metrics, exemption pattern analysis, public leaderboard
 
 ## Architecture
 
@@ -67,14 +79,14 @@ Frontend (Next.js 14)          Backend (FastAPI)              External Services
 │  Dashboard       │          │  Response Analyzer    │       │ (MuckRock,      │
 │                  │ <────── │  Letter Generator     │       │  DocumentCloud) │
 │  Next.js App     │          │  Deadline Calculator  │       │                 │
-│  Router          │          │                      │       │ MuckRock API    │
-└──────────────────┘          │  Verified Data:       │       │ DocumentCloud   │
-                              │  - 52 federal agencies│       │ API             │
-                              │  - FOIA statute text  │       └─────────────────┘
-                              │  - Verbatim CFR text  │
-                              │  - Agency intel cache │       ┌─────────────────┐
-                              └──────────────────────┘       │ Supabase        │
-                                                             │ (PostgreSQL +   │
+│  Router          │          │  File Processor       │       │ MuckRock API    │
+└──────────────────┘          │                      │       │ DocumentCloud   │
+                              │  Verified Data:       │       │ API             │
+                              │  - 52 federal agencies│       └─────────────────┘
+                              │  - FOIA statute text  │
+                              │  - Verbatim CFR text  │       ┌─────────────────┐
+                              │  - Agency intel cache │       │ Supabase        │
+                              └──────────────────────┘       │ (PostgreSQL +   │
                                                              │  Auth + RLS)    │
                                                              └─────────────────┘
 ```
@@ -120,10 +132,10 @@ uvicorn app.main:app --reload --port 8000
 # Frontend (new terminal)
 cd frontend
 npm install
-npm run dev -- --port 3005
+npm run dev
 ```
 
-Open [http://localhost:3005](http://localhost:3005) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Environment Variables
 
@@ -135,6 +147,7 @@ TAVILY_API_KEY=        # Web search across MuckRock and DocumentCloud
 # Required for auth + cloud persistence (optional for local dev)
 SUPABASE_URL=          # Your Supabase project URL
 SUPABASE_SERVICE_KEY=  # Service role key (backend only — never expose publicly)
+SUPABASE_JWT_SECRET=   # JWT secret for token validation
 
 # Frontend (.env.local or Vercel env vars)
 NEXT_PUBLIC_API_URL=            # Backend URL
@@ -147,9 +160,10 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=  # Supabase anon/public key
 The app is designed for zero-config deployment:
 
 - **Backend → Railway**: Set root directory to `backend/`, add env vars. `railway.toml` and `Procfile` handle the rest.
-- **Frontend → Vercel**: Import repo, set env vars. `vercel.json` at repo root handles the monorepo build.
+- **Frontend → Vercel**: Import repo, set root directory to `frontend/`, add env vars.
 - **Database → Supabase**: Run `backend/supabase_schema.sql` in SQL Editor to create all tables, RLS policies, and indexes.
 - **Seed agency profiles**: Run `python -m app.scripts.seed_agency_profiles` once to populate all 52 federal agencies with verbatim CFR regulation text from eCFR.
+- **Auth redirect**: Add your Vercel URL to Supabase Authentication → URL Configuration → Redirect URLs.
 
 ## Project Structure
 
@@ -176,15 +190,20 @@ FOIA-Fluent/
 │   │   ├── scripts/
 │   │   │   └── seed_agency_profiles.py # One-time Supabase seeder
 │   │   └── services/
-│   │       ├── drafter.py             # Claude-powered FOIA drafting
+│   │       ├── drafter.py             # Claude-powered FOIA drafting + MuckRock research
 │   │       ├── agency_intel.py        # Agency FOIA pattern research + cache
 │   │       ├── agency_profiles.py     # Agency profile lookup (Supabase-first)
 │   │       ├── supabase_store.py      # Supabase-backed request persistence
 │   │       ├── request_store.py       # Local JSON fallback persistence
 │   │       ├── request_analyzer.py    # Analyzes imported FOIA letters
+│   │       ├── file_processor.py      # DOCX/PDF/image text extraction
 │   │       ├── deadline_calculator.py # 20 business-day FOIA deadline logic
 │   │       ├── response_analyzer.py   # Claude-powered response analysis
-│   │       └── letter_generator.py    # Follow-up and appeal letter generation
+│   │       ├── letter_generator.py    # Follow-up and appeal letter generation
+│   │       ├── search.py              # Discovery pipeline (agency ID + search)
+│   │       ├── query_interpreter.py   # Claude query interpretation
+│   │       ├── documentcloud.py       # DocumentCloud API client
+│   │       └── tavily_search.py       # Tavily domain-scoped search client
 │   ├── supabase_schema.sql            # Full DB schema with RLS policies
 │   ├── railway.toml                   # Railway deployment config
 │   └── Procfile                       # Fallback start command
@@ -192,7 +211,7 @@ FOIA-Fluent/
 │   └── src/
 │       ├── app/
 │       │   ├── page.tsx               # Main search + draft wizard
-│       │   ├── globals.css            # Global styles
+│       │   ├── globals.css            # Global styles (NYC-DSSG blue/orange theme)
 │       │   ├── layout.tsx             # App layout with Nav
 │       │   ├── auth/callback/         # Supabase magic link callback
 │       │   ├── login/                 # Login page
@@ -201,12 +220,12 @@ FOIA-Fluent/
 │       │   └── requests/[id]/         # Request detail page
 │       ├── components/
 │       │   ├── AuthGuard.tsx          # Auth gate wrapper
+│       │   ├── ConfirmModal.tsx       # Reusable confirmation dialog
 │       │   └── Nav.tsx                # Sticky nav with user session
 │       └── lib/
 │           ├── api.ts                 # Discovery + drafting API client
 │           ├── supabase.ts            # Supabase client + auth helpers
 │           └── tracking-api.ts        # Request tracking API client
-├── vercel.json                        # Vercel monorepo build config
 ├── .env.example                       # All required env vars documented
 └── implementation_strategy.md         # Full technical blueprint
 ```

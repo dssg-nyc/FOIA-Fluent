@@ -216,58 +216,76 @@ class FOIADrafter:
         }
 
     async def research_similar_requests(
-        self, agency_name: str, description: str
+        self, agency_name: str, description: str,
+        foia_queries: list[str] | None = None,
     ) -> list[SimilarRequest]:
-        """Search MuckRock for similar FOIA requests to learn from."""
+        """Search MuckRock for similar FOIA requests to learn from.
+
+        If foia_queries are provided (from QueryInterpreter), uses those
+        short targeted queries. Otherwise falls back to agency_name + description.
+        """
         if not self.tavily:
             return []
 
-        query = f"site:muckrock.com {agency_name} FOIA request {description}"
+        if foia_queries:
+            queries = [f"{agency_name} {q}" for q in foia_queries[:3]]
+        else:
+            queries = [f"{agency_name} {description}"]
+
         try:
-            response = await self.tavily.search(
-                query=query,
-                max_results=8,
-                search_depth="advanced",
-                include_domains=["muckrock.com"],
-            )
+            tasks = [
+                self.tavily.search(
+                    query=q,
+                    max_results=5,
+                    search_depth="advanced",
+                    include_domains=["muckrock.com"],
+                )
+                for q in queries
+            ]
+            responses = await asyncio.gather(*tasks)
 
+            seen_urls: set[str] = set()
             results = []
-            for item in response.get("results", []):
-                url = item.get("url", "")
-                if "muckrock.com" not in url:
-                    continue
-                title = item.get("title", "")
-                content = item.get("content", "")
-                combined = (title + " " + content).lower()
-                # Extract status from title and content — MuckRock pages
-                # typically include status in titles like "Completed" or content
-                status = ""
-                status_keywords = [
-                    ("completed", "completed"),
-                    ("partially completed", "partially completed"),
-                    ("rejected", "rejected"),
-                    ("no responsive documents", "no responsive documents"),
-                    ("no responsive", "no responsive documents"),
-                    ("fix required", "fix required"),
-                    ("payment required", "payment required"),
-                    ("appealing", "appealing"),
-                    ("abandoned", "abandoned"),
-                    ("processing", "processing"),
-                    ("acknowledged", "acknowledged"),
-                    ("submitted", "submitted"),
-                    ("filed", "submitted"),
-                ]
-                for keyword, label in status_keywords:
-                    if keyword in combined:
-                        status = label
-                        break
+            for response in responses:
+                for item in response.get("results", []):
+                    url = item.get("url", "")
+                    if "muckrock.com" not in url:
+                        continue
+                    normalized = url.rstrip("/").lower()
+                    if normalized in seen_urls:
+                        continue
+                    seen_urls.add(normalized)
 
-                results.append(SimilarRequest(
-                    title=title.replace(" - MuckRock", "").strip(),
-                    status=status,
-                    url=url,
-                    description=content[:300],
-                ))
+                    title = item.get("title", "")
+                    content = item.get("content", "")
+                    combined = (title + " " + content).lower()
+                    status = ""
+                    status_keywords = [
+                        ("completed", "completed"),
+                        ("partially completed", "partially completed"),
+                        ("rejected", "rejected"),
+                        ("no responsive documents", "no responsive documents"),
+                        ("no responsive", "no responsive documents"),
+                        ("fix required", "fix required"),
+                        ("payment required", "payment required"),
+                        ("appealing", "appealing"),
+                        ("abandoned", "abandoned"),
+                        ("processing", "processing"),
+                        ("acknowledged", "acknowledged"),
+                        ("submitted", "submitted"),
+                        ("filed", "submitted"),
+                    ]
+                    for keyword, label in status_keywords:
+                        if keyword in combined:
+                            status = label
+                            break
+
+                    results.append(SimilarRequest(
+                        title=title.replace(" - MuckRock", "").strip(),
+                        status=status,
+                        url=url,
+                        description=content[:300],
+                    ))
             return results
         except Exception as e:
             logger.error(f"MuckRock research failed: {e}")
@@ -282,19 +300,28 @@ class FOIADrafter:
         fee_waiver: bool = False,
         expedited_processing: bool = False,
         preferred_format: str = "electronic",
+        similar_requests_prefetched: list[SimilarRequest] | None = None,
     ) -> dict:
         """Generate a FOIA request letter using verified legal context and MuckRock intelligence."""
 
-        # Step 1: Run both research agents in parallel
-        tasks = [self.research_similar_requests(agency.name, description)]
+        # Step 1: Run research agents in parallel
+        # Skip similar_requests fetch if pre-fetched from discovery (same agency)
+        tasks = []
+        if similar_requests_prefetched is None:
+            tasks.append(self.research_similar_requests(agency.name, description))
         if self.intel_agent:
             tasks.append(
                 self.intel_agent.research_agency(agency.abbreviation, agency.name)
             )
 
         results = await asyncio.gather(*tasks)
-        similar = results[0]
-        intel = results[1] if len(results) > 1 else {}
+
+        if similar_requests_prefetched is not None:
+            similar = similar_requests_prefetched
+            intel = results[0] if results else {}
+        else:
+            similar = results[0]
+            intel = results[1] if len(results) > 1 else {}
 
         # Step 2: Build context for Claude
         similar_context = self._format_similar_requests(similar)

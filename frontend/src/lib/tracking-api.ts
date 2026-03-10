@@ -73,6 +73,7 @@ export interface ExemptionValidity {
 
 export interface ResponseAnalysis {
   request_id: string;
+  communication_id?: string;
   response_complete: boolean;
   exemptions_cited: string[];
   exemptions_valid: ExemptionValidity[];
@@ -97,7 +98,8 @@ export interface TrackedRequestDetail {
   request: TrackedRequest;
   communications: Communication[];
   deadline: DeadlineInfo | null;
-  analysis: ResponseAnalysis | null;
+  analysis: ResponseAnalysis | null;      // latest (backward compat)
+  analyses: ResponseAnalysis[];           // all, oldest first
 }
 
 export interface GeneratedLetter {
@@ -140,6 +142,14 @@ export interface AddCommunicationPayload {
   subject?: string;
   body: string;
   date: string;
+}
+
+export interface UpdateCommunicationPayload {
+  subject?: string;
+  body?: string;
+  date?: string;
+  direction?: string;
+  comm_type?: string;
 }
 
 export interface AnalyzeResponsePayload {
@@ -226,14 +236,52 @@ export async function addCommunication(
   });
 }
 
-export async function analyzeResponse(
-  id: string,
-  payload: AnalyzeResponsePayload
-): Promise<ResponseAnalysis> {
-  return apiFetch(`/tracking/requests/${id}/analyze-response`, {
-    method: "POST",
+export async function updateCommunication(
+  requestId: string,
+  commId: string,
+  payload: UpdateCommunicationPayload
+): Promise<Communication> {
+  return apiFetch(`/tracking/requests/${requestId}/communications/${commId}`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
+}
+
+export async function deleteCommunication(
+  requestId: string,
+  commId: string
+): Promise<void> {
+  await apiFetch(`/tracking/requests/${requestId}/communications/${commId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function analyzeResponse(
+  id: string,
+  payload: AnalyzeResponsePayload,
+  files: File[] = []
+): Promise<ResponseAnalysis> {
+  const token = await getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const form = new FormData();
+  form.append("response_text", payload.response_text);
+  form.append("response_date", payload.response_date);
+  for (const file of files) {
+    form.append("files", file);
+  }
+
+  const res = await fetch(`${API_URL}/api/v1/tracking/requests/${id}/analyze-response`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Request failed: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function generateLetter(

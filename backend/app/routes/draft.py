@@ -44,6 +44,7 @@ async def generate_draft(body: DraftRequest):
             fee_waiver=body.fee_waiver,
             expedited_processing=body.expedited_processing,
             preferred_format=body.preferred_format,
+            similar_requests_prefetched=body.similar_requests_prefetched,
         )
     except Exception as e:
         raise HTTPException(

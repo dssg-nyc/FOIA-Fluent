@@ -43,6 +43,7 @@ class TrackedRequest(BaseModel):
 
 class ResponseAnalysis(BaseModel):
     request_id: str
+    communication_id: Optional[str] = None
     response_complete: bool
     exemptions_cited: list[str] = []
     exemptions_valid: list[dict] = []   # [{exemption, assessment, reasoning}]
@@ -99,6 +100,14 @@ class AddCommunicationPayload(BaseModel):
     date: str
 
 
+class UpdateCommunicationPayload(BaseModel):
+    subject: Optional[str] = None
+    body: Optional[str] = None
+    date: Optional[str] = None
+    direction: Optional[str] = None
+    comm_type: Optional[str] = None
+
+
 class AnalyzeResponsePayload(BaseModel):
     response_text: str
     response_date: str
@@ -133,7 +142,8 @@ class TrackedRequestDetail(BaseModel):
     request: TrackedRequest
     communications: list[Communication] = []
     deadline: Optional[DeadlineInfo] = None
-    analysis: Optional[ResponseAnalysis] = None
+    analysis: Optional[ResponseAnalysis] = None     # latest analysis (backward compat)
+    analyses: list[ResponseAnalysis] = []           # all analyses, oldest first
 
 
 class GeneratedLetter(BaseModel):

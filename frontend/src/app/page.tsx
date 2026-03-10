@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   discover,
-  identifyAgency,
   generateDraft,
   DiscoveryResponse,
   DiscoveryStep,
@@ -16,6 +15,7 @@ import {
   AgencyIntel,
 } from "@/lib/api";
 import { trackRequest } from "@/lib/tracking-api";
+import { supabase } from "@/lib/supabase";
 
 const SOURCE_LABELS: Record<string, string> = {
   documentcloud: "DocumentCloud",
@@ -24,7 +24,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const SOURCE_COLORS: Record<string, string> = {
-  documentcloud: "#2563eb",
+  documentcloud: "#1B4F72",
   web: "#7c3aed",
   muckrock: "#059669",
 };
@@ -97,28 +97,31 @@ export default function Home() {
     setCopied(false);
   }
 
-  async function handleStartDraft() {
+  function handleStartDraft() {
     if (!data) return;
-    setDraftPhase("identifying");
     setDraftError(null);
-    try {
-      const result = await identifyAgency(query, data.agencies);
-      setAgencyResult(result);
-      setSelectedAgency(result.agency);
+    // Agency was already identified during discovery — use it directly
+    if (data.agency) {
+      setAgencyResult({
+        agency: data.agency,
+        alternatives: data.alternatives || [],
+        reasoning: data.agency_reasoning || "",
+      });
+      setSelectedAgency(data.agency);
       setRecordsDescription(query);
       setDraftPhase("confirm-agency");
-    } catch (err) {
-      setDraftError(
-        err instanceof Error ? err.message : "Agency identification failed"
-      );
-      setDraftPhase("idle");
+    } else {
+      setDraftError("Could not identify an agency. Please try a more specific query.");
     }
   }
 
   async function handleGenerateDraft() {
-    if (!selectedAgency || !requesterName.trim()) return;
+    if (!selectedAgency || !requesterName.trim() || !data) return;
     setDraftPhase("generating");
     setDraftError(null);
+
+    // Reuse similar_requests from discovery if same agency, otherwise let draft re-fetch
+    const sameAgency = data.agency?.abbreviation === selectedAgency.abbreviation;
     try {
       const result = await generateDraft({
         description: recordsDescription,
@@ -128,8 +131,43 @@ export default function Home() {
         fee_waiver: feeWaiver,
         expedited_processing: expedited,
         preferred_format: preferredFormat,
+        ...(sameAgency && data.similar_requests.length > 0
+          ? { similar_requests_prefetched: data.similar_requests }
+          : {}),
       });
       setDraftResult(result);
+
+      // If different agency, update Step 1 display to match the new similar_requests
+      if (!sameAgency && result.similar_requests.length > 0) {
+        setData((prev) => {
+          if (!prev) return prev;
+          const newStep1Results = result.similar_requests.map((sr, i) => ({
+            id: `mr-${i}`,
+            title: sr.title,
+            status: sr.status,
+            source: "muckrock" as const,
+            url: sr.url,
+            date: null,
+            description: sr.description,
+            agency: "",
+            filed_by: "",
+            page_count: null,
+          }));
+          const updatedSteps = prev.steps.map((step) =>
+            step.step === 1
+              ? {
+                  ...step,
+                  title: "Similar FOIA Requests",
+                  description: `Similar FOIA requests filed with ${selectedAgency.abbreviation}`,
+                  results: newStep1Results,
+                  found: newStep1Results.length > 0,
+                }
+              : step
+          );
+          return { ...prev, steps: updatedSteps };
+        });
+      }
+
       setDraftPhase("review-draft");
     } catch (err) {
       setDraftError(
@@ -148,36 +186,48 @@ export default function Home() {
 
   async function handleTrackRequest() {
     if (!draftResult || !selectedAgency) return;
+
+    const payload = {
+      title: recordsDescription.slice(0, 80) + (recordsDescription.length > 80 ? "..." : ""),
+      description: recordsDescription,
+      agency: selectedAgency,
+      letter_text: draftResult.letter_text,
+      requester_name: requesterName,
+      requester_organization: requesterOrg,
+      statute_cited: draftResult.statute_cited,
+      key_elements: draftResult.key_elements,
+      tips: draftResult.tips,
+      submission_info: draftResult.submission_info,
+      similar_requests: draftResult.similar_requests,
+      drafting_strategy: draftResult.drafting_strategy,
+      agency_intel: draftResult.agency_intel,
+      discovery_results: data?.steps.flatMap((s) =>
+        s.results.map((r) => ({
+          title: r.title || "",
+          url: r.url,
+          source: r.source,
+          description: r.description,
+          agency: r.agency,
+          date: r.date ?? undefined,
+          status: r.status,
+        }))
+      ) ?? [],
+    };
+
+    // If Supabase is configured, check auth before proceeding
+    if (supabase) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        // Save payload and redirect to login — callback will submit it after sign-in
+        localStorage.setItem("pending_track_request", JSON.stringify(payload));
+        router.push("/login?next=track");
+        return;
+      }
+    }
+
     setIsTracking(true);
     try {
-      const detail = await trackRequest({
-        title: recordsDescription.slice(0, 80) + (recordsDescription.length > 80 ? "..." : ""),
-        description: recordsDescription,
-        agency: selectedAgency,
-        letter_text: draftResult.letter_text,
-        requester_name: requesterName,
-        requester_organization: requesterOrg,
-        // Phase 2 research intelligence
-        statute_cited: draftResult.statute_cited,
-        key_elements: draftResult.key_elements,
-        tips: draftResult.tips,
-        submission_info: draftResult.submission_info,
-        similar_requests: draftResult.similar_requests,
-        drafting_strategy: draftResult.drafting_strategy,
-        agency_intel: draftResult.agency_intel,
-        // Phase 1 discovery results
-        discovery_results: data?.steps.flatMap((s) =>
-          s.results.map((r) => ({
-            title: r.title || "",
-            url: r.url,
-            source: r.source,
-            description: r.description,
-            agency: r.agency,
-            date: r.date ?? undefined,
-            status: r.status,
-          }))
-        ) ?? [],
-      });
+      const detail = await trackRequest(payload);
       router.push(`/requests/${detail.request.id}`);
     } catch {
       setDraftError("Failed to save request for tracking. Please try again.");
@@ -205,7 +255,7 @@ export default function Home() {
         <textarea
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Describe what you're looking for in plain language. For example:&#10;&#10;&quot;My family member died in an ICE detention center and I'm trying to get records about the circumstances of their death&quot;&#10;&#10;&quot;EPA water quality inspection reports for Flint, Michigan&quot;"
+          placeholder="Describe what you're looking for in plain language."
           className="search-textarea"
           rows={3}
           onKeyDown={(e) => {
@@ -224,7 +274,8 @@ export default function Home() {
         <ProgressStepper
           steps={[
             "Understanding your request",
-            "Searching for existing FOIA requests",
+            "Identifying the best agency",
+            "Finding similar FOIA requests",
             "Searching public document repositories",
           ]}
           intervalMs={3000}
@@ -274,13 +325,6 @@ export default function Home() {
 
           {/* Draft wizard */}
           {draftError && <div className="error-message">{draftError}</div>}
-
-          {draftPhase === "identifying" && (
-            <ProgressStepper
-              steps={["Identifying the right federal agency"]}
-              intervalMs={2000}
-            />
-          )}
 
           {draftPhase === "confirm-agency" && agencyResult && (
             <AgencyConfirmation
@@ -641,7 +685,7 @@ function DraftReview({
       intel.denial_patterns?.length > 0 ||
       intel.exemption_patterns?.length > 0);
 
-  const [showAgencyResearch, setShowAgencyResearch] = useState(false);
+  const [showAgencyResearch, setShowAgencyResearch] = useState(true);
 
   return (
     <div className="draft-wizard">
@@ -684,7 +728,7 @@ function DraftReview({
 
       {/* How We Built This Draft — combined interpretability section */}
       <div className="strategy-card">
-        <h4>How We Built This Draft</h4>
+        <h4>Initial Request Analysis</h4>
 
         {strategy?.summary && (
           <p className="strategy-summary">{strategy.summary}</p>
@@ -755,7 +799,7 @@ function DraftReview({
         {/* Topic-specific requests */}
         {draft.similar_requests.length > 0 && (
           <div className="strategy-sources">
-            <strong>Topic-specific requests on MuckRock</strong>
+            <strong>Similar FOIA Requests</strong>
             <ul className="similar-list">
               {draft.similar_requests.map((sr, i) => (
                 <li key={i}>
@@ -850,7 +894,7 @@ function DraftReview({
                 )}
                 {intel.exemption_patterns.length > 0 && (
                   <div>
-                    <span className="research-label">Exemption-related</span>
+                    <span className="research-label status-exemption">Exemption-related</span>
                     <ul className="similar-list">
                       {intel.exemption_patterns.map((sr, i) => (
                         <li key={`e-${i}`}>

@@ -32,6 +32,7 @@ class DraftRequest(BaseModel):
     fee_waiver: bool = False
     expedited_processing: bool = False
     preferred_format: str = "electronic"
+    similar_requests_prefetched: list["SimilarRequest"] | None = None
 
 
 class SimilarRequest(BaseModel):

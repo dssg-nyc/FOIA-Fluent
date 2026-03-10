@@ -31,14 +31,14 @@ Frontend (Next.js 14)          Backend (FastAPI)              External Services
 │  Dashboard       │          │  Response Analyzer    │       │ (MuckRock,      │
 │                  │ <────── │  Letter Generator     │       │  DocumentCloud) │
 │  Next.js App     │          │  Deadline Calculator  │       │                 │
-│  Router          │          │                      │       │ MuckRock API    │
-└──────────────────┘          │  Verified Data:       │       │ DocumentCloud   │
-                              │  - 52 federal agencies│       │ API             │
-                              │  - FOIA statute text  │       └─────────────────┘
-                              │  - Verbatim CFR text  │
-                              │  - Agency intel cache │       ┌─────────────────┐
-                              └──────────────────────┘       │ Supabase        │
-                                                             │ (PostgreSQL +   │
+│  Router          │          │  File Processor       │       │ MuckRock API    │
+└──────────────────┘          │                      │       │ DocumentCloud   │
+                              │  Verified Data:       │       │ API             │
+                              │  - 52 federal agencies│       └─────────────────┘
+                              │  - FOIA statute text  │
+                              │  - Verbatim CFR text  │       ┌─────────────────┐
+                              │  - Agency intel cache │       │ Supabase        │
+                              └──────────────────────┘       │ (PostgreSQL +   │
                                                              │  Auth + RLS)    │
                                                              └─────────────────┘
 ```
@@ -88,8 +88,8 @@ Frontend (Next.js 14)          Backend (FastAPI)              External Services
 - `comm_type`, `subject`, `body`, `date`
 
 **`response_analyses`** — Claude's analysis of agency responses, RLS by `user_id`
-- `id`, `request_id`, `user_id`
-- `completeness`, `recommendation`, `exemptions_cited`
+- `id`, `request_id`, `user_id`, `communication_id`
+- `completeness`, `recommended_action`, `exemptions_cited`
 - `grounds_for_appeal`, `missing_records`, `negotiation_points`, `summary`
 
 ### RLS Policy Pattern
@@ -109,7 +109,7 @@ CREATE POLICY "users_own_requests" ON tracked_requests
 
 | API | Usage | Key Notes |
 |-----|-------|-----------|
-| Anthropic (Claude) | Drafting, analysis, letter generation, query interpretation | `claude-sonnet-4-20250514`, async client |
+| Anthropic (Claude) | Drafting, analysis, letter generation, query interpretation, agency identification | `claude-sonnet-4-20250514`, async client |
 | Tavily | MuckRock search, DocumentCloud search, agency intel research | Domain-scoped, `include_domains` filter |
 | MuckRock | Existing FOIA requests, outcomes | Public API, no auth required |
 | DocumentCloud | Public interest documents | Public API |
@@ -117,20 +117,29 @@ CREATE POLICY "users_own_requests" ON tracked_requests
 
 ---
 
-## Phase 1: Document Discovery (Complete)
+## Phase 1: Document Discovery & Agency Identification (Complete)
 
-**Goal:** Search existing public records before filing a new request.
+**Goal:** Auto-identify the best agency, search for similar prior FOIA requests, and find publicly available documents — all before filing a new request.
 
 **Components:**
-- `services/query_interpreter.py` — Claude parses natural language query, identifies agencies + record types
-- `services/search.py` — orchestrates parallel search across MuckRock, DocumentCloud, Tavily
+- `services/query_interpreter.py` — Claude parses natural language query, identifies agencies + record types, generates optimized search queries for each source
+- `services/search.py` — orchestrates the unified discovery pipeline
+- `services/drafter.py` — `research_similar_requests()` runs agency-scoped MuckRock searches using interpreter's `foia_queries`
 - `routes/search.py` — `/api/v1/search` endpoint
 - `app/page.tsx` — multi-step wizard: query → results → proceed to draft
+
+**Discovery pipeline flow:**
+1. Claude interprets query → generates `foia_queries`, `document_queries`, `public_records_queries`
+2. **Parallel**: identify agency (via `drafter.identify_agency()`) + search public documents (DocumentCloud + Tavily)
+3. **Sequential**: agency-scoped MuckRock search using interpreter's optimized queries (up to 3 parallel queries, deduplicated)
+4. Return: identified agency + similar FOIA requests + public documents + recommendation
 
 **Key design decisions:**
 - `asyncio.gather()` for parallel search across all sources
 - Results merged and deduplicated by URL
-- Claude recommends: use existing documents vs. file new request
+- Agency identification happens during discovery (not as a separate step during drafting)
+- `DiscoveryResponse` includes `agency`, `alternatives`, `agency_reasoning`, `similar_requests`
+- Multi-query approach: `foia_queries` from interpreter are short, targeted queries (e.g., "ICE detention death reviews") rather than the raw user input
 
 ---
 
@@ -143,6 +152,11 @@ CREATE POLICY "users_own_requests" ON tracked_requests
 2. `data/federal_agencies.py` + Supabase `agency_profiles` — verified FOIA contact info and CFR citations for 52 agencies
 3. Supabase `agency_profiles.cfr_text` — verbatim CFR regulation text fetched from eCFR, injected verbatim into every prompt
 4. `services/agency_intel.py` — real-time MuckRock research on agency's FOIA track record (24-hour cache)
+
+**Unified research flow:**
+- If the user keeps the same agency from discovery, `similar_requests_prefetched` is passed to `generate_draft()` — skipping a duplicate MuckRock search
+- If the user picks a different agency, the draft re-fetches similar requests for the new agency
+- Agency intel (success/denial/exemption patterns) always runs fresh (cached with 24h TTL)
 
 **Store dispatcher pattern** (`routes/tracking.py`):
 ```python
@@ -176,16 +190,18 @@ results = await asyncio.gather(*tasks)
 - Claude evaluates completeness, validates each exemption cited against statute text
 - Identifies missing records, negotiation points
 - Recommends: accept / follow-up / appeal / negotiate scope
+- Analysis is tied to specific `communication_id` for inline display
 
 **Letter generator** (`services/letter_generator.py`):
 - `follow_up` — cites statutory deadline, days elapsed, demands response
 - `appeal` — challenges each exemption with legal reasoning, cites OGIS mediation option
-- Auto-logged as outgoing `communication` entry after generation
+- Generated letters display inline within the timeline card (not as a separate bottom section)
 
 **Communication timeline:**
 - Each incoming/outgoing item stored in `communications` table
 - Direction: `incoming` | `outgoing`
 - Types: `initial_request`, `follow_up`, `response`, `appeal`, `acknowledgment`, `other`
+- Delete confirmation via reusable `ConfirmModal` component
 
 ---
 
@@ -194,12 +210,17 @@ results = await asyncio.gather(*tasks)
 **Goal:** Allow users to bring existing in-flight FOIA requests into the system.
 
 **Import flow** (`POST /tracking/requests/import`):
-1. Resolve agency abbreviation → full `AgencyInfo` from Supabase
-2. Run full research pipeline concurrently (same as new draft flow)
-3. `RequestAnalyzer.analyze_import()` — assesses existing letter against research context
-4. Create `TrackedRequest` with analysis results
-5. Log original letter as outgoing `communication`
-6. If `existing_response` provided, run `ResponseAnalyzer` immediately
+1. User selects agency from constrained dropdown (50+ agencies with backend data)
+2. Resolve agency abbreviation → full `AgencyInfo` from Supabase
+3. Run full research pipeline concurrently (same as new draft flow)
+4. `RequestAnalyzer.analyze_import()` — assesses existing letter against research context
+5. Create `TrackedRequest` with analysis results
+6. Log original letter as outgoing `communication`
+7. If `existing_response` provided, run `ResponseAnalyzer` immediately
+
+**File processor** (`services/file_processor.py`):
+- Extracts text from DOCX, PDF, TXT, and image files
+- Used during import for uploaded FOIA letters and agency responses
 
 **`cfr_available` flag:**
 - Set on `AgencyInfo` when building from profile: `cfr_available=bool(profile.get("cfr_text", ""))`
@@ -216,7 +237,7 @@ results = await asyncio.gather(*tasks)
 |---------|---------|--------|
 | Supabase | PostgreSQL + Auth + RLS | `supabase_schema.sql` |
 | Railway | FastAPI backend | `backend/railway.toml`, `backend/Procfile` |
-| Vercel | Next.js frontend | `vercel.json` at repo root |
+| Vercel | Next.js frontend | Root directory `frontend/` |
 
 ### Railway
 
@@ -231,19 +252,11 @@ healthcheckPath = "/health"
 
 Set root directory to `backend/` in Railway service settings.
 
-Required env vars: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `ADMIN_SECRET`, `BACKEND_CORS_ORIGINS`
+Required env vars: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWT_SECRET`, `BACKEND_CORS_ORIGINS`, `MUCKROCK_BASE_URL`
 
 ### Vercel
 
-```json
-// vercel.json
-{
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/.next",
-  "installCommand": "cd frontend && npm install",
-  "framework": "nextjs"
-}
-```
+Set root directory to `frontend/` in Vercel project settings.
 
 Required env vars: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
@@ -266,7 +279,7 @@ python -m app.scripts.seed_agency_profiles
 
 After Vercel deploy, update Railway env:
 ```
-BACKEND_CORS_ORIGINS=https://your-app.vercel.app,http://localhost:3005
+BACKEND_CORS_ORIGINS=["https://your-app.vercel.app","http://localhost:3000"]
 ```
 
 ---

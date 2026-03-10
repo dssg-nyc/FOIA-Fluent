@@ -3,6 +3,9 @@
 Validates the Supabase JWT from the Authorization: Bearer header.
 Extracts the user_id (sub claim) for use in route handlers.
 
+Supabase projects may use either HS256 (JWT secret) or RS256 (JWKS).
+This middleware handles both automatically.
+
 Usage in route handlers:
     from app.middleware.auth import get_current_user_id
 
@@ -14,6 +17,8 @@ Local dev behavior:
     If SUPABASE_URL is not configured, get_current_user_id returns a fixed
     dev user ID so the app works without authentication during development.
 """
+import base64
+import json
 import logging
 from typing import Optional
 
@@ -25,8 +30,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# JWKS endpoint for Supabase JWT validation
-# Supabase publishes public keys at this URL
+# JWKS endpoint for Supabase JWT validation (RS256 projects)
 _jwks_client: Optional[PyJWKClient] = None
 
 # Fixed user ID for local dev (when Supabase is not configured)
@@ -46,6 +50,20 @@ def _get_jwks_client() -> Optional[PyJWKClient]:
     except Exception as e:
         logger.warning(f"JWKS client init failed: {e}")
         return None
+
+
+def _get_jwt_alg(token: str) -> str:
+    """Decode the JWT header (without verification) to get the algorithm."""
+    try:
+        header_b64 = token.split(".")[0]
+        # Add padding if needed
+        padding = 4 - len(header_b64) % 4
+        if padding != 4:
+            header_b64 += "=" * padding
+        header = json.loads(base64.b64decode(header_b64))
+        return header.get("alg", "RS256")
+    except Exception:
+        return "RS256"
 
 
 async def get_current_user_id(
@@ -72,24 +90,37 @@ async def get_current_user_id(
     if not token:
         raise HTTPException(status_code=401, detail="Empty token")
 
-    jwks = _get_jwks_client()
-    if not jwks:
-        # Supabase URL is set but JWKS not available — fail secure
-        raise HTTPException(status_code=503, detail="Auth service unavailable")
+    alg = _get_jwt_alg(token)
 
     try:
-        signing_key = jwks.get_signing_key_from_jwt(token)
-        payload = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256"],
-            audience="authenticated",
-            options={"verify_exp": True},
-        )
+        if alg == "HS256" and settings.supabase_jwt_secret:
+            # HS256: verify with the Supabase JWT secret
+            payload = jwt.decode(
+                token,
+                settings.supabase_jwt_secret,
+                algorithms=["HS256"],
+                audience="authenticated",
+                options={"verify_exp": True},
+            )
+        else:
+            # RS256 / ES256: verify with JWKS public key
+            jwks = _get_jwks_client()
+            if not jwks:
+                raise HTTPException(status_code=503, detail="Auth service unavailable")
+            signing_key = jwks.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256", "ES256"],
+                audience="authenticated",
+                options={"verify_exp": True},
+            )
+
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Token missing user ID")
         return user_id
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as e:

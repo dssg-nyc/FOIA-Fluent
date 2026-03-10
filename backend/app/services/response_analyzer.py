@@ -87,9 +87,36 @@ class ResponseAnalyzer:
         self.client = anthropic.AsyncAnthropic(api_key=anthropic_api_key)
 
     async def analyze(
-        self, request: TrackedRequest, response_text: str, response_date: str
+        self,
+        request: TrackedRequest,
+        response_text: str,
+        response_date: str,
+        prior_exchanges: list[dict] = [],
+        attachments: list[dict] = [],
+        communication_id: str | None = None,
     ) -> ResponseAnalysis:
-        system_prompt = ANALYSIS_PROMPT.format(
+        prior_context = ""
+        if prior_exchanges:
+            lines = ["=== PRIOR COMMUNICATION HISTORY (oldest first) ==="]
+            for ex in prior_exchanges:
+                direction = ex.get("direction", "unknown")
+                date = ex.get("date", "unknown")
+                body = ex.get("body", "")[:300]
+                if direction == "outgoing":
+                    label = f"Requester ({ex.get('type', 'message')})"
+                else:
+                    label = "Agency"
+                lines.append(f"[{date}] {label}: \"{body}\"")
+                # Include prior analysis if present
+                if ex.get("analysis_summary"):
+                    lines.append(
+                        f"  → Our analysis: {ex['analysis_summary']} "
+                        f"(recommended: {ex.get('recommended_action', 'unknown')})"
+                    )
+            lines.append("")
+            prior_context = "\n".join(lines) + "\n"
+
+        system_prompt = prior_context + ANALYSIS_PROMPT.format(
             citation=FOIA_STATUTE["citation"],
             exemption_text=_build_exemption_text(),
             appeal_text=_build_appeal_text(),
@@ -97,17 +124,25 @@ class ResponseAnalyzer:
             agency_response=response_text,
         )
 
+        # Build message content: attachments first, then the text prompt
+        content: list[dict] = list(attachments)
+        if attachments:
+            content.append({"type": "text", "text": "Analyze the attached document(s) as the agency's response, together with any response text below.\n\n" + system_prompt})
+        else:
+            content.append({"type": "text", "text": system_prompt})
+
         message = await self.client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             system="You are a FOIA legal analyst. Return only valid JSON.",
-            messages=[{"role": "user", "content": system_prompt}],
+            messages=[{"role": "user", "content": content}],
         )
 
         parsed = _parse_json(message.content[0].text)
 
         return ResponseAnalysis(
             request_id=request.id,
+            communication_id=communication_id,
             response_complete=parsed.get("response_complete", False),
             exemptions_cited=parsed.get("exemptions_cited", []),
             exemptions_valid=parsed.get("exemptions_valid", []),

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listRequests, TrackedRequestDetail } from "@/lib/tracking-api";
+import { listRequests, deleteRequest, TrackedRequestDetail } from "@/lib/tracking-api";
 import AuthGuard from "@/components/AuthGuard";
+import ConfirmModal from "@/components/ConfirmModal";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -43,13 +44,29 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+
+  const refresh = () => listRequests().then(setItems).catch((e) => setError(e.message));
 
   useEffect(() => {
-    listRequests()
-      .then(setItems)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    refresh().finally(() => setLoading(false));
   }, []);
+
+  async function handleDelete(id: string, title: string) {
+    setDeleteTarget({ id, title });
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    try {
+      await deleteRequest(deleteTarget.id);
+      setDeleteTarget(null);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+      setDeleteTarget(null);
+    }
+  }
 
   const filtered = items.filter((item) => {
     const status = item.request.status;
@@ -80,7 +97,7 @@ export default function Dashboard() {
         </div>
         <div className="dashboard-actions">
           <Link href="/import" className="wizard-cancel">
-            Track Existing Request
+            Add Existing Request
           </Link>
           <Link href="/" className="draft-button">
             + New Request
@@ -125,15 +142,23 @@ export default function Dashboard() {
 
       <ul className="dashboard-list">
         {sorted.map((item) => (
-          <RequestRow key={item.request.id} item={item} />
+          <RequestRow key={item.request.id} item={item} onDelete={handleDelete} />
         ))}
       </ul>
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete request"
+          message={`Are you sure you want to delete "${deleteTarget.title}"? This cannot be undone.`}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </main>
     </AuthGuard>
   );
 }
 
-function RequestRow({ item }: { item: TrackedRequestDetail }) {
+function RequestRow({ item, onDelete }: { item: TrackedRequestDetail; onDelete: (id: string, title: string) => void }) {
   const { request, deadline } = item;
   const isOverdue = deadline?.is_overdue;
 
@@ -163,6 +188,13 @@ function RequestRow({ item }: { item: TrackedRequestDetail }) {
           </div>
         </div>
       </Link>
+      <button
+        className="dashboard-row-delete"
+        onClick={(e) => { e.preventDefault(); onDelete(request.id, request.title); }}
+        title="Delete request"
+      >
+        ×
+      </button>
     </li>
   );
 }

@@ -17,6 +17,7 @@ from app.models.tracking import (
     ResponseAnalysis,
     TrackedRequest,
     TrackRequestPayload,
+    UpdateCommunicationPayload,
     UpdateRequestPayload,
 )
 from app.services.agency_profiles import _get_supabase
@@ -188,6 +189,64 @@ def add_communication(request_id: str, payload: AddCommunicationPayload, user_id
     return _row_to_communication(result.data[0]) if result.data else None
 
 
+def update_communication(comm_id: str, request_id: str, payload: UpdateCommunicationPayload, user_id: str) -> Optional[Communication]:
+    sb = _require_supabase()
+    if not get_request(request_id, user_id):
+        return None
+    updates = payload.model_dump(exclude_none=True)
+    if not updates:
+        return None
+    result = (
+        sb.table("communications")
+        .update(updates)
+        .eq("id", comm_id)
+        .eq("request_id", request_id)
+        .execute()
+    )
+    if result.data:
+        sb.table("tracked_requests").update({"updated_at": _now()}).eq("id", request_id).execute()
+        return _row_to_communication(result.data[0])
+    return None
+
+
+def delete_communication(comm_id: str, request_id: str, user_id: str) -> bool:
+    sb = _require_supabase()
+    req = get_request(request_id, user_id)
+    if not req:
+        return False
+
+    # Delete any linked analysis first (before FK sets it to NULL)
+    sb.table("response_analyses").delete().eq("communication_id", comm_id).execute()
+
+    result = (
+        sb.table("communications")
+        .delete()
+        .eq("id", comm_id)
+        .eq("request_id", request_id)
+        .execute()
+    )
+    if result.data:
+        # Recalculate request status from remaining analyses
+        remaining = get_all_analyses(request_id, user_id)
+        if remaining:
+            latest = remaining[-1]
+            if latest.recommended_action == "accept":
+                new_status = "fulfilled"
+            elif latest.recommended_action == "appeal":
+                new_status = "denied"
+            else:
+                new_status = "responded"
+        else:
+            # No analyses left — revert based on whether request was filed
+            new_status = "awaiting_response" if req.filed_date else "draft"
+
+        sb.table("tracked_requests").update({
+            "status": new_status,
+            "updated_at": _now(),
+        }).eq("id", request_id).eq("user_id", user_id).execute()
+    return bool(result.data)
+
+
 # ── Response analyses ──────────────────────────────────────────────────────────
 
 def save_analysis(analysis: ResponseAnalysis, user_id: str) -> None:
@@ -203,6 +262,7 @@ def save_analysis(analysis: ResponseAnalysis, user_id: str) -> None:
 
     row = {
         "request_id": analysis.request_id,
+        "communication_id": analysis.communication_id,
         "response_complete": analysis.response_complete,
         "exemptions_cited": analysis.exemptions_cited,
         "exemptions_valid": analysis.exemptions_valid,
@@ -213,7 +273,7 @@ def save_analysis(analysis: ResponseAnalysis, user_id: str) -> None:
         "analyzed_at": analysis.analyzed_at,
     }
 
-    sb.table("response_analyses").upsert(row).execute()
+    sb.table("response_analyses").insert(row).execute()
 
     # Advance request status
     now = _now()
@@ -234,3 +294,16 @@ def get_analysis(request_id: str, user_id: str) -> Optional[ResponseAnalysis]:
         .execute()
     )
     return _row_to_analysis(result.data[0]) if result.data else None
+
+
+def get_all_analyses(request_id: str, user_id: str) -> list[ResponseAnalysis]:
+    """Return all analyses for a request, oldest first."""
+    sb = _require_supabase()
+    result = (
+        sb.table("response_analyses")
+        .select("*")
+        .eq("request_id", request_id)
+        .order("analyzed_at", desc=False)
+        .execute()
+    )
+    return [_row_to_analysis(r) for r in (result.data or [])]

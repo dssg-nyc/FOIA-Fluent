@@ -4,20 +4,21 @@ import logging
 import httpx
 
 from app.models.search import SearchResult, DiscoveryStep, DiscoveryResponse
+from app.models.draft import AgencyInfo, SimilarRequest
 from app.services.documentcloud import DocumentCloudClient
 from app.services.tavily_search import TavilySearchClient
 from app.services.query_interpreter import QueryInterpreter
+from app.services.drafter import FOIADrafter
 
 logger = logging.getLogger(__name__)
 
 
 class DiscoveryPipeline:
-    """3-step discovery pipeline:
+    """Discovery pipeline:
 
-    Step 1: Has someone already filed a FOIA request for this?
-            → Search MuckRock via Tavily
-    Step 2: Is this information already publicly available?
-            → Search DocumentCloud + gov sites via Tavily
+    Step 0: Claude interprets the query and auto-identifies the best agency
+    Step 1: Similar FOIA Requests — agency-scoped MuckRock search
+    Step 2: Publicly Available Documents — DocumentCloud + gov sites
     Step 3: Recommendation — file a new request or use what was found.
     """
 
@@ -31,6 +32,10 @@ class DiscoveryPipeline:
         self.tavily = TavilySearchClient(tavily_api_key) if tavily_api_key else None
         self.interpreter = (
             QueryInterpreter(anthropic_api_key) if anthropic_api_key else None
+        )
+        self.drafter = FOIADrafter(
+            anthropic_api_key=anthropic_api_key,
+            tavily_api_key=tavily_api_key,
         )
 
     async def discover(self, user_query: str) -> DiscoveryResponse:
@@ -51,19 +56,53 @@ class DiscoveryPipeline:
         doc_queries = interpreted.get("document_queries", [user_query])
         public_queries = interpreted.get("public_records_queries", [user_query])
 
-        # Step 1 + Step 2 run in parallel
-        step1_task = self._step1_foia_requests(foia_queries)
+        # Run agency identification + public docs in parallel
+        agency_task = self._identify_agency(user_query, agencies)
         step2_task = self._step2_public_documents(doc_queries, public_queries)
 
-        step1_results, step2_results = await asyncio.gather(
-            step1_task, step2_task
+        agency_result, step2_results = await asyncio.gather(
+            agency_task, step2_task
         )
+
+        primary_agency: AgencyInfo | None = None
+        alternatives: list[AgencyInfo] = []
+        agency_reasoning: str = ""
+        similar: list[SimilarRequest] = []
+
+        if agency_result:
+            primary_agency = agency_result.get("agency")
+            alternatives = agency_result.get("alternatives", [])
+            agency_reasoning = agency_result.get("reasoning", "")
+
+            # Now run agency-scoped similar request search
+            if primary_agency:
+                similar = await self.drafter.research_similar_requests(
+                    primary_agency.name, user_query,
+                    foia_queries=foia_queries,
+                )
+
+        # Convert SimilarRequest → SearchResult for Step 1 display
+        step1_results = [
+            SearchResult(
+                id=f"mr-{i}",
+                title=sr.title,
+                status=sr.status,
+                source="muckrock",
+                url=sr.url,
+                description=sr.description,
+            )
+            for i, sr in enumerate(similar)
+        ]
 
         # Build steps
         step1 = DiscoveryStep(
             step=1,
-            title="Existing FOIA Requests",
-            description="Searching for similar FOIA requests that have already been filed",
+            title="Similar FOIA Requests",
+            description=(
+                f"Similar FOIA requests filed with {primary_agency.abbreviation}"
+                if primary_agency
+                else "Similar FOIA requests on MuckRock"
+            ),
             results=step1_results,
             found=len(step1_results) > 0,
         )
@@ -88,19 +127,21 @@ class DiscoveryPipeline:
             record_types=record_types,
             steps=[step1, step2],
             recommendation=recommendation,
+            agency=primary_agency,
+            alternatives=alternatives,
+            agency_reasoning=agency_reasoning,
+            similar_requests=similar,
         )
 
-    async def _step1_foia_requests(
-        self, queries: list[str]
-    ) -> list[SearchResult]:
-        """Search for existing FOIA requests on MuckRock."""
-        if not self.tavily:
-            return []
+    async def _identify_agency(
+        self, query: str, agencies_hint: list[str]
+    ) -> dict | None:
+        """Auto-identify the best agency using the drafter."""
         try:
-            return await self.tavily.search_foia_requests(queries)
+            return await self.drafter.identify_agency(query, agencies_hint)
         except Exception as e:
-            logger.error(f"FOIA request search failed: {e}")
-            return []
+            logger.error(f"Agency identification failed: {e}")
+            return None
 
     async def _step2_public_documents(
         self, doc_queries: list[str], public_queries: list[str]
@@ -143,14 +184,14 @@ class DiscoveryPipeline:
     ) -> str:
         if step1.found and step2.found:
             return (
-                f"Found {len(step1.results)} existing FOIA request(s) and "
+                f"Found {len(step1.results)} similar FOIA request(s) and "
                 f"{len(step2.results)} public document(s). Review these first — "
                 f"the information you need may already be available. "
                 f"If not, we can help you file a targeted FOIA request."
             )
         elif step1.found:
             return (
-                f"Found {len(step1.results)} existing FOIA request(s) that may "
+                f"Found {len(step1.results)} similar FOIA request(s) that may "
                 f"be relevant. Check their status — if fulfilled, the documents "
                 f"may already be available. If denied or pending, we can help "
                 f"you file your own request using lessons from these cases."

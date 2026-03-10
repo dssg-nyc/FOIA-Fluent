@@ -1,10 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AuthGuard from "@/components/AuthGuard";
 import { importRequest } from "@/lib/tracking-api";
+
+const AGENCIES = [
+  { abbr: "APHIS", name: "Animal and Plant Health Inspection Service" },
+  { abbr: "ARMY", name: "Department of the Army" },
+  { abbr: "ATF", name: "Bureau of Alcohol, Tobacco, Firearms and Explosives" },
+  { abbr: "BOP", name: "Federal Bureau of Prisons" },
+  { abbr: "CBP", name: "U.S. Customs and Border Protection" },
+  { abbr: "CDC", name: "Centers for Disease Control and Prevention" },
+  { abbr: "CFPB", name: "Consumer Financial Protection Bureau" },
+  { abbr: "CIA", name: "Central Intelligence Agency" },
+  { abbr: "CISA", name: "Cybersecurity and Infrastructure Security Agency" },
+  { abbr: "CMS", name: "Centers for Medicare and Medicaid Services" },
+  { abbr: "DEA", name: "Drug Enforcement Administration" },
+  { abbr: "DHS", name: "Department of Homeland Security" },
+  { abbr: "DIA", name: "Defense Intelligence Agency" },
+  { abbr: "DOC", name: "Department of Commerce" },
+  { abbr: "DOD", name: "Department of Defense" },
+  { abbr: "DOE", name: "Department of Energy" },
+  { abbr: "DOI", name: "Department of the Interior" },
+  { abbr: "DOJ", name: "Department of Justice" },
+  { abbr: "DOL", name: "Department of Labor" },
+  { abbr: "EEOC", name: "Equal Employment Opportunity Commission" },
+  { abbr: "EPA", name: "Environmental Protection Agency" },
+  { abbr: "FBI", name: "Federal Bureau of Investigation" },
+  { abbr: "FCC", name: "Federal Communications Commission" },
+  { abbr: "FDA", name: "Food and Drug Administration" },
+  { abbr: "FEC", name: "Federal Election Commission" },
+  { abbr: "FEMA", name: "Federal Emergency Management Agency" },
+  { abbr: "FSIS", name: "Food Safety and Inspection Service" },
+  { abbr: "FTC", name: "Federal Trade Commission" },
+  { abbr: "HHS", name: "Department of Health and Human Services" },
+  { abbr: "ICE", name: "U.S. Immigration and Customs Enforcement" },
+  { abbr: "IRS", name: "Internal Revenue Service" },
+  { abbr: "NARA", name: "National Archives and Records Administration" },
+  { abbr: "NAVY", name: "Department of the Navy" },
+  { abbr: "NIH", name: "National Institutes of Health" },
+  { abbr: "NLRB", name: "National Labor Relations Board" },
+  { abbr: "NSA", name: "National Security Agency" },
+  { abbr: "NSF", name: "National Science Foundation" },
+  { abbr: "OPM", name: "Office of Personnel Management" },
+  { abbr: "SEC", name: "Securities and Exchange Commission" },
+  { abbr: "SSA", name: "Social Security Administration" },
+  { abbr: "STATE", name: "Department of State" },
+  { abbr: "TREASURY", name: "Department of the Treasury" },
+  { abbr: "TSA", name: "Transportation Security Administration" },
+  { abbr: "USAF", name: "U.S. Air Force" },
+  { abbr: "USCG", name: "U.S. Coast Guard" },
+  { abbr: "USCIS", name: "U.S. Citizenship and Immigration Services" },
+  { abbr: "USDA", name: "Department of Agriculture" },
+  { abbr: "USMS", name: "U.S. Marshals Service" },
+  { abbr: "USSS", name: "U.S. Secret Service" },
+  { abbr: "VA", name: "Department of Veterans Affairs" },
+];
 
 type Step = "agency" | "letter" | "processing";
 
@@ -66,7 +119,7 @@ export default function ImportPage() {
       <main className="container">
         <div className="dashboard-header">
           <div>
-            <h1 className="dashboard-title">Track Existing Request</h1>
+            <h1 className="dashboard-title">Add Existing Request</h1>
             <p className="dashboard-subtitle">
               Bring an in-flight FOIA request into the system — we'll analyze your letter
               and set up deadline tracking.
@@ -112,6 +165,40 @@ function AgencyStep({
   onChange: (d: AgencyStep) => void;
   onNext: () => void;
 }) {
+  const [query, setQuery] = useState(
+    () => {
+      const match = AGENCIES.find(a => a.abbr === data.abbreviation);
+      return match ? `${match.abbr} — ${match.name}` : data.abbreviation;
+    }
+  );
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // If query matches a selected agency display string, use the abbreviation part for filtering
+  const searchTerm = query.includes(" — ") ? query.split(" — ")[0].trim() : query.trim();
+  const filtered = searchTerm
+    ? AGENCIES.filter(a => {
+        const q = searchTerm.toUpperCase();
+        return a.abbr.includes(q) || a.name.toUpperCase().includes(q);
+      })
+    : AGENCIES;
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function selectAgency(abbr: string, name: string) {
+    onChange({ ...data, abbreviation: abbr });
+    setQuery(`${abbr} — ${name}`);
+    setOpen(false);
+  }
+
   const canProceed = data.abbreviation.trim().length >= 2 && data.description.trim().length >= 10;
 
   return (
@@ -120,31 +207,45 @@ function AgencyStep({
         <span className="wizard-step-number">Step 1 of 2</span>
         <h2>Which agency did you send this to?</h2>
         <p className="wizard-step-desc">
-          Enter the agency abbreviation (e.g. FBI, EPA, DHS) and briefly describe what
-          records you requested — this powers the research analysis.
+          Search for the federal agency and briefly describe what records you
+          requested — this powers the research analysis.
         </p>
       </div>
 
       <div className="wizard-field">
-        <label className="wizard-label">Agency abbreviation *</label>
-        <input
-          className="wizard-input"
-          type="text"
-          placeholder="e.g. FBI, EPA, ICE, USCG"
-          value={data.abbreviation}
-          onChange={(e) => onChange({ ...data, abbreviation: e.target.value })}
-          style={{ textTransform: "uppercase", maxWidth: "200px" }}
-        />
+        <label className="wizard-label">Agency *</label>
+        <div className="agency-search-wrapper" ref={wrapperRef}>
+          <input
+            className="wizard-input"
+            type="text"
+            placeholder="Search by name or abbreviation…"
+            value={query}
+            onChange={(e) => {
+              const val = e.target.value;
+              setQuery(val);
+              setOpen(true);
+              // Clear selection — abbreviation only gets set via dropdown pick
+              if (data.abbreviation) onChange({ ...data, abbreviation: "" });
+            }}
+            onFocus={() => setOpen(true)}
+          />
+          {open && filtered.length > 0 && (
+            <ul className="agency-dropdown">
+              {filtered.map((a) => (
+                <li
+                  key={a.abbr}
+                  className={`agency-dropdown-item${a.abbr === data.abbreviation ? " selected" : ""}`}
+                  onClick={() => selectAgency(a.abbr, a.name)}
+                >
+                  <strong>{a.abbr}</strong>
+                  <span>{a.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <p className="wizard-hint">
-          Use the standard abbreviation.{" "}
-          <a
-            href="https://www.foia.gov/agencies.html"
-            target="_blank"
-            rel="noreferrer"
-            className="wizard-link"
-          >
-            Look up agency codes ↗
-          </a>
+          Select from 50+ federal agencies we have on file.
         </p>
       </div>
 
@@ -153,7 +254,7 @@ function AgencyStep({
         <textarea
           className="wizard-textarea"
           rows={4}
-          placeholder="e.g. All communications between ICE field offices and local law enforcement regarding detainer requests in 2023..."
+          placeholder="Briefly describe the records you requested…"
           value={data.description}
           onChange={(e) => onChange({ ...data, description: e.target.value })}
         />
@@ -233,7 +334,7 @@ function LetterStep({
           <input
             className="wizard-input"
             type="text"
-            placeholder="e.g. Vera Institute"
+            placeholder="Organization name"
             value={data.requester_organization}
             onChange={(e) => onChange({ ...data, requester_organization: e.target.value })}
           />

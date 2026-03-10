@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   getRequest,
@@ -8,16 +8,14 @@ import {
   analyzeResponse,
   generateLetter,
   addCommunication,
+  updateCommunication,
+  deleteCommunication,
   TrackedRequestDetail,
   Communication,
   ResponseAnalysis,
-  DeadlineInfo,
-  SimilarRequest,
-  DraftingStrategy,
-  AgencyIntel,
-  DiscoveryResult,
 } from "@/lib/tracking-api";
 import AuthGuard from "@/components/AuthGuard";
+import ConfirmModal from "@/components/ConfirmModal";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -59,6 +57,18 @@ function formatDate(iso: string | null | undefined): string {
   });
 }
 
+/** Parse the attachment manifest prepended to comm body, e.g. "[Attachments: a.pdf, b.jpg] — included in analysis\n\n..." */
+function parseAttachmentManifest(body: string): { names: string[]; rest: string } {
+  const match = body.match(/^\[Attachments: ([^\]]+)\] — included in analysis\n\n?([\s\S]*)/);
+  if (match) {
+    return {
+      names: match[1].split(",").map((s) => s.trim()),
+      rest: match[2],
+    };
+  }
+  return { names: [], rest: body };
+}
+
 export default function RequestDetail() {
   const params = useParams();
   const router = useRouter();
@@ -71,22 +81,24 @@ export default function RequestDetail() {
   // UI state
   const [showSubmitForm, setShowSubmitForm] = useState(false);
   const [filedDate, setFiledDate] = useState("");
-  const [showResponseForm, setShowResponseForm] = useState(false);
-  const [responseText, setResponseText] = useState("");
-  const [responseDate, setResponseDate] = useState(new Date().toISOString().split("T")[0]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCommForm, setShowCommForm] = useState(false);
   const [commBody, setCommBody] = useState("");
   const [commSubject, setCommSubject] = useState("");
   const [commDate, setCommDate] = useState(new Date().toISOString().split("T")[0]);
-  const [generating, setGenerating] = useState<string | null>(null);  // "follow_up" | "appeal" | "analyzing"
+  const [commDirection, setCommDirection] = useState<"outgoing" | "incoming">("outgoing");
+  const [generating, setGenerating] = useState<string | null>(null);
   const [generatedLetter, setGeneratedLetter] = useState<{ type: string; text: string } | null>(null);
   const [copiedLetter, setCopiedLetter] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Research context collapsible sections
-  const [showStrategy, setShowStrategy] = useState(false);
-  const [showSimilar, setShowSimilar] = useState(false);
-  const [showDiscovery, setShowDiscovery] = useState(false);
+  // Research section expanded by default
+  const [researchOpen, setResearchOpen] = useState(true);
+  const [showStrategy, setShowStrategy] = useState(true);
+  const [showSimilar, setShowSimilar] = useState(true);
+  const [showDiscovery, setShowDiscovery] = useState(true);
 
   const refresh = () =>
     getRequest(id)
@@ -103,20 +115,26 @@ export default function RequestDetail() {
   if (loading) return <main className="container"><p className="loading-text">Loading...</p></main>;
   if (error || !detail) return <main className="container"><div className="error-message">{error || "Request not found"}</div></main>;
 
-  const { request, communications, deadline, analysis } = detail;
+  const { request, communications, deadline, analysis, analyses } = detail;
   const status = request.status;
   const isOverdue = deadline?.is_overdue;
   const canGenerateFollowUp = deadline && isOverdue && ["awaiting_response", "submitted"].includes(status);
-  const canAnalyzeResponse = ["awaiting_response", "submitted", "responded", "partial"].includes(status);
   const canGenerateAppeal = analysis && ["appeal", "negotiate_scope"].includes(analysis.recommended_action);
   const isResolved = ["fulfilled", "denied", "appealed"].includes(status);
+
+  // Map communication_id → analysis for inline rendering
+  const analysesByCommId = new Map<string, ResponseAnalysis>();
+  for (const a of (analyses ?? [])) {
+    if (a.communication_id) analysesByCommId.set(a.communication_id, a);
+  }
+  // Legacy: analyses without communication_id — show latest standalone
+  const legacyAnalysis = analysis && !analysis.communication_id ? analysis : null;
 
   async function handleMarkSubmitted() {
     if (!filedDate) return;
     setActionError(null);
     try {
       await updateRequest(id, { status: "awaiting_response", filed_date: filedDate });
-      // Log the initial request as a communication
       await addCommunication(id, {
         direction: "outgoing",
         comm_type: "initial_request",
@@ -131,19 +149,44 @@ export default function RequestDetail() {
     }
   }
 
-  async function handleAnalyzeResponse() {
-    if (!responseText.trim()) return;
-    setGenerating("analyzing");
+  async function handleLogComm() {
+    if (!commBody.trim() && files.length === 0) return;
     setActionError(null);
-    try {
-      await analyzeResponse(id, { response_text: responseText, response_date: responseDate });
-      setShowResponseForm(false);
-      setResponseText("");
-      await refresh();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Analysis failed");
-    } finally {
-      setGenerating(null);
+
+    if (commDirection === "incoming") {
+      // Incoming → auto-analyze via the analyze-response endpoint
+      setGenerating("analyzing");
+      try {
+        await analyzeResponse(id, { response_text: commBody, response_date: commDate }, files);
+        setShowCommForm(false);
+        setCommBody("");
+        setCommSubject("");
+        setFiles([]);
+        setCommDirection("outgoing");
+        await refresh();
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : "Analysis failed");
+      } finally {
+        setGenerating(null);
+      }
+    } else {
+      // Outgoing → just log the communication
+      try {
+        await addCommunication(id, {
+          direction: "outgoing",
+          comm_type: "follow_up",
+          subject: commSubject,
+          body: commBody,
+          date: commDate,
+        });
+        setShowCommForm(false);
+        setCommBody("");
+        setCommSubject("");
+        setCommDirection("outgoing");
+        await refresh();
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : "Failed to log communication");
+      }
     }
   }
 
@@ -161,23 +204,24 @@ export default function RequestDetail() {
     }
   }
 
-  async function handleAddComm() {
-    if (!commBody.trim()) return;
+
+  async function handleEditComm(commId: string, updates: { body?: string; date?: string; subject?: string }) {
     setActionError(null);
     try {
-      await addCommunication(id, {
-        direction: "outgoing",
-        comm_type: "other",
-        subject: commSubject,
-        body: commBody,
-        date: commDate,
-      });
-      setShowCommForm(false);
-      setCommBody("");
-      setCommSubject("");
+      await updateCommunication(id, commId, updates);
       await refresh();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Failed to log communication");
+      setActionError(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
+  async function handleDeleteComm(commId: string) {
+    setActionError(null);
+    try {
+      await deleteCommunication(id, commId);
+      await refresh();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Failed to delete");
     }
   }
 
@@ -186,6 +230,17 @@ export default function RequestDetail() {
     await navigator.clipboard.writeText(generatedLetter.text);
     setCopiedLetter(true);
     setTimeout(() => setCopiedLetter(false), 2000);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const dropped = Array.from(e.dataTransfer.files);
+    setFiles((prev) => [...prev, ...dropped]);
+  }
+
+  function removeFile(idx: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
   }
 
   return (
@@ -271,199 +326,100 @@ export default function RequestDetail() {
             </button>
           )}
 
-          {canAnalyzeResponse && !showResponseForm && !showSubmitForm && (
-            <button
-              className="draft-button action-secondary"
-              onClick={() => setShowResponseForm(true)}
-            >
-              I Received a Response
-            </button>
-          )}
+        </div>
+      )}
 
-          {showResponseForm && (
-            <div className="action-form">
-              <label className="form-label">
-                Response Date
-                <input
-                  type="date"
-                  className="form-input"
-                  value={responseDate}
-                  onChange={(e) => setResponseDate(e.target.value)}
-                />
-              </label>
-              <label className="form-label">
-                Paste Agency Response
-                <textarea
-                  className="search-textarea"
-                  rows={8}
-                  value={responseText}
-                  onChange={(e) => setResponseText(e.target.value)}
-                  placeholder="Paste the full text of the agency's response letter..."
-                />
-              </label>
-              <div className="wizard-actions">
-                <button
-                  className="draft-button"
-                  onClick={handleAnalyzeResponse}
-                  disabled={!responseText.trim() || !!generating}
+      {/* ── Log Communication (always available) ── */}
+      <div className="action-panel">
+        <button
+          className="wizard-cancel"
+          onClick={() => { setShowCommForm(!showCommForm); setFiles([]); }}
+        >
+          {showCommForm ? "Cancel" : "Log Communication"}
+        </button>
+
+        {showCommForm && (
+          <div className="action-form">
+            <label className="form-label">
+              Direction
+              <select className="form-input" value={commDirection} onChange={(e) => setCommDirection(e.target.value as "outgoing" | "incoming")}>
+                <option value="outgoing">Outgoing (you sent)</option>
+                <option value="incoming">Incoming (agency sent)</option>
+              </select>
+            </label>
+            <label className="form-label">
+              Date
+              <input
+                type="date"
+                className="form-input"
+                value={commDate}
+                onChange={(e) => setCommDate(e.target.value)}
+              />
+            </label>
+            <label className="form-label">
+              {commDirection === "incoming" ? "Paste Agency Response (optional if uploading documents)" : "Content"}
+              <textarea
+                className="search-textarea"
+                rows={4}
+                value={commBody}
+                onChange={(e) => setCommBody(e.target.value)}
+                placeholder={commDirection === "incoming"
+                  ? "Paste the full text of the agency's response..."
+                  : "Paste letter text, write a note, or describe what happened..."}
+              />
+            </label>
+
+            {/* File drop zone — only for incoming (agency responses) */}
+            {commDirection === "incoming" && (
+              <>
+                <div
+                  className={`file-drop-zone ${dragging ? "file-drop-zone-active" : ""}`}
+                  onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  {generating === "analyzing" ? "Analyzing..." : "Analyze Response"}
-                </button>
-                <button className="wizard-cancel" onClick={() => setShowResponseForm(false)}>
-                  Cancel
-                </button>
-              </div>
+                  <span>Drop files here or click to attach</span>
+                  <span className="file-drop-hint">PDF, images (PNG/JPG/WebP), TIFF, DOCX, TXT</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.tif,.tiff,.docx,.doc,.txt,.html"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      if (e.target.files) setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+                {files.length > 0 && (
+                  <div className="file-chip-list">
+                    {files.map((f, i) => (
+                      <span key={i} className="file-chip">
+                        {f.name}
+                        <button type="button" className="file-chip-remove" onClick={() => removeFile(i)}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="wizard-actions">
+              <button
+                className="draft-button"
+                onClick={handleLogComm}
+                disabled={(commBody.trim() === "" && files.length === 0) || !!generating}
+              >
+                {commDirection === "incoming"
+                  ? (generating === "analyzing" ? "Analyzing..." : "Save & Analyze")
+                  : "Save"}
+              </button>
             </div>
-          )}
-
-          {!showSubmitForm && !showResponseForm && (
-            <button
-              className="wizard-cancel"
-              onClick={() => setShowCommForm(!showCommForm)}
-            >
-              {showCommForm ? "Cancel" : "Log Communication"}
-            </button>
-          )}
-
-          {showCommForm && (
-            <div className="action-form">
-              <label className="form-label">
-                Date
-                <input
-                  type="date"
-                  className="form-input"
-                  value={commDate}
-                  onChange={(e) => setCommDate(e.target.value)}
-                />
-              </label>
-              <label className="form-label">
-                Subject (optional)
-                <input
-                  type="text"
-                  className="form-input"
-                  value={commSubject}
-                  onChange={(e) => setCommSubject(e.target.value)}
-                  placeholder="e.g. Acknowledgment received"
-                />
-              </label>
-              <label className="form-label">
-                Notes
-                <textarea
-                  className="search-textarea"
-                  rows={4}
-                  value={commBody}
-                  onChange={(e) => setCommBody(e.target.value)}
-                  placeholder="What happened? Paste letter text or write a note..."
-                />
-              </label>
-              <div className="wizard-actions">
-                <button
-                  className="draft-button"
-                  onClick={handleAddComm}
-                  disabled={!commBody.trim()}
-                >
-                  Save
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Research Context ── */}
-      <ResearchContext
-        request={request}
-        showStrategy={showStrategy}
-        setShowStrategy={setShowStrategy}
-        showSimilar={showSimilar}
-        setShowSimilar={setShowSimilar}
-        showDiscovery={showDiscovery}
-        setShowDiscovery={setShowDiscovery}
-      />
-
-      {/* ── Response Analysis ── */}
-      {analysis && (
-        <div className="analysis-card">
-          <h3>Response Analysis</h3>
-          <p className="analysis-summary">{analysis.summary}</p>
-
-          <div className="analysis-action">
-            <span className={`recommended-action action-${analysis.recommended_action}`}>
-              Recommended: {analysis.recommended_action.replace("_", " ")}
-            </span>
           </div>
-
-          {analysis.exemptions_valid.length > 0 && (
-            <div className="analysis-section">
-              <strong>Exemption Review</strong>
-              <table className="exemption-table">
-                <thead>
-                  <tr>
-                    <th>Exemption</th>
-                    <th>Assessment</th>
-                    <th>Reasoning</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {analysis.exemptions_valid.map((e, i) => (
-                    <tr key={i}>
-                      <td>{e.exemption}</td>
-                      <td>
-                        <span className={`exemption-badge badge-${e.assessment}`}>
-                          {e.assessment}
-                        </span>
-                      </td>
-                      <td>{e.reasoning}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {analysis.missing_records.length > 0 && (
-            <div className="analysis-section">
-              <strong>Missing Records</strong>
-              <ul>
-                {analysis.missing_records.map((r, i) => <li key={i}>{r}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {analysis.grounds_for_appeal.length > 0 && (
-            <div className="analysis-section">
-              <strong>Grounds for Appeal</strong>
-              <ul>
-                {analysis.grounds_for_appeal.map((g, i) => <li key={i}>{g}</li>)}
-              </ul>
-            </div>
-          )}
-
-          {canGenerateAppeal && (
-            <button
-              className="draft-button"
-              onClick={() => handleGenerateLetter("appeal")}
-              disabled={!!generating}
-              style={{ marginTop: "1rem" }}
-            >
-              {generating === "appeal" ? "Generating Appeal..." : "Generate Appeal Letter"}
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── Generated Letter ── */}
-      {generatedLetter && (
-        <div className="generated-letter-card">
-          <h3>{generatedLetter.type === "follow_up" ? "Follow-Up Letter" : "Appeal Letter"}</h3>
-          <div className="letter-preview">
-            <pre className="letter-text">{generatedLetter.text}</pre>
-            <button className="copy-button" onClick={handleCopyLetter}>
-              {copiedLetter ? "Copied!" : "Copy to Clipboard"}
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── Communication Timeline ── */}
       <div className="timeline-section">
@@ -475,26 +431,137 @@ export default function RequestDetail() {
             {[...communications]
               .sort((a, b) => a.date.localeCompare(b.date))
               .map((comm) => (
-                <TimelineEntry key={comm.id} comm={comm} />
+                <TimelineEntry
+                  key={comm.id}
+                  comm={comm}
+                  inlineAnalysis={analysesByCommId.get(comm.id)}
+                  onGenerateAppeal={
+                    analysesByCommId.has(comm.id) &&
+                    ["appeal", "negotiate_scope"].includes(analysesByCommId.get(comm.id)!.recommended_action)
+                      ? () => handleGenerateLetter("appeal")
+                      : undefined
+                  }
+                  generating={generating}
+                  generatedLetter={generatedLetter}
+                  copiedLetter={copiedLetter}
+                  onCopyLetter={handleCopyLetter}
+                  onEdit={(updates) => handleEditComm(comm.id, updates)}
+                  onDelete={() => handleDeleteComm(comm.id)}
+                />
               ))}
           </ul>
         )}
       </div>
 
-      {/* ── Original Letter ── */}
-      <details className="original-letter-details">
-        <summary>View Original Request Letter</summary>
-        <div className="letter-preview" style={{ marginTop: "0.75rem" }}>
-          <pre className="letter-text">{request.letter_text}</pre>
+      {/* ── Legacy Analysis Panel (no communication_id) ── */}
+      {legacyAnalysis && (
+        <div className="analysis-card">
+          <h3>Response Analysis</h3>
+          <AnalysisBody analysis={legacyAnalysis} />
+          {canGenerateAppeal && (
+            <button
+              className="draft-button"
+              onClick={() => handleGenerateLetter("appeal")}
+              disabled={!!generating}
+              style={{ marginTop: "1rem" }}
+            >
+              {generating === "appeal" ? "Generating Appeal..." : "Generate Appeal Letter"}
+            </button>
+          )}
+          {generatedLetter && (
+            <div className="generated-letter-card" style={{ marginTop: "1rem" }}>
+              <h4>{generatedLetter.type === "follow_up" ? "Follow-Up Letter" : "Appeal Letter"}</h4>
+              <div className="letter-preview">
+                <pre className="letter-text">{generatedLetter.text}</pre>
+                <button className="copy-button" onClick={handleCopyLetter}>
+                  {copiedLetter ? "Copied!" : "Copy to Clipboard"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      </details>
+      )}
+
+      {/* ── Research Context (collapsed by default) ── */}
+      <div className="research-context">
+        <button
+          className="collapse-toggle research-context-toggle"
+          onClick={() => setResearchOpen(!researchOpen)}
+        >
+          <h3 className="research-context-title" style={{ margin: 0 }}>AI-Driven Analysis Reports</h3>
+          <span className="collapse-arrow">{researchOpen ? "▲" : "▼"}</span>
+        </button>
+        {researchOpen && (
+          <ResearchContext
+            request={request}
+            showStrategy={showStrategy}
+            setShowStrategy={setShowStrategy}
+            showSimilar={showSimilar}
+            setShowSimilar={setShowSimilar}
+            showDiscovery={showDiscovery}
+            setShowDiscovery={setShowDiscovery}
+          />
+        )}
+      </div>
+
     </main>
     </AuthGuard>
   );
 }
 
+/** Shared analysis body — used both inline and in the legacy standalone panel. */
+function AnalysisBody({ analysis }: { analysis: ResponseAnalysis }) {
+  return (
+    <>
+      <p className="analysis-summary">{analysis.summary}</p>
+      <div className="analysis-action">
+        <span className={`recommended-action action-${analysis.recommended_action}`}>
+          Recommended: {analysis.recommended_action.replace(/_/g, " ")}
+        </span>
+      </div>
+      {analysis.exemptions_valid.length > 0 && (
+        <div className="analysis-section">
+          <strong>Exemption Review</strong>
+          <table className="exemption-table">
+            <thead>
+              <tr>
+                <th>Exemption</th>
+                <th>Assessment</th>
+                <th>Reasoning</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analysis.exemptions_valid.map((e, i) => (
+                <tr key={i}>
+                  <td>{e.exemption}</td>
+                  <td>
+                    <span className={`exemption-badge badge-${e.assessment}`}>{e.assessment}</span>
+                  </td>
+                  <td>{e.reasoning}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {analysis.missing_records.length > 0 && (
+        <div className="analysis-section">
+          <strong>Missing Records</strong>
+          <ul>{analysis.missing_records.map((r, i) => <li key={i}>{r}</li>)}</ul>
+        </div>
+      )}
+      {analysis.grounds_for_appeal.length > 0 && (
+        <div className="analysis-section">
+          <strong>Grounds for Appeal</strong>
+          <ul>{analysis.grounds_for_appeal.map((g, i) => <li key={i}>{g}</li>)}</ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 const SOURCE_COLORS: Record<string, string> = {
-  documentcloud: "#2563eb",
+  documentcloud: "#1B4F72",
   web: "#7c3aed",
   muckrock: "#059669",
 };
@@ -534,13 +601,11 @@ function ResearchContext({
   if (!hasSubmission && !hasStrategy && !hasSimilar && !hasDiscovery) return null;
 
   return (
-    <div className="research-context">
-      <h3 className="research-context-title">Research Context</h3>
+    <div style={{ marginTop: "1rem" }}>
       <p className="research-context-subtitle">
-        Intelligence gathered when drafting this request — use as reference while communicating with the agency.
+        Intelligence gathered from analyzing your initial request — use as reference while communicating with the agency.
       </p>
 
-      {/* CFR regulation notice for agencies without published eCFR text */}
       {request.agency.cfr_available === false && (
         <div className="cfr-missing-notice">
           <div className="cfr-missing-icon">ⓘ</div>
@@ -566,29 +631,21 @@ function ResearchContext({
         </div>
       )}
 
-      {/* A: Submission Guide */}
       {hasSubmission && (
         <div className="research-subsection">
           <h4>Submission Guide</h4>
-          {statute_cited && (
-            <div style={{ marginBottom: "0.5rem" }}>
-              <span className="tag">{statute_cited}</span>
-            </div>
-          )}
+          {statute_cited && <div style={{ marginBottom: "0.5rem" }}><span className="tag">{statute_cited}</span></div>}
           {submission_info && <p style={{ marginBottom: "0.75rem" }}>{submission_info}</p>}
           {tips?.length > 0 && (
-            <ul className="research-tips">
-              {tips.map((tip, i) => <li key={i}>{tip}</li>)}
-            </ul>
+            <ul className="research-tips">{tips.map((tip, i) => <li key={i}>{tip}</li>)}</ul>
           )}
         </div>
       )}
 
-      {/* B: How We Built This Draft */}
       {hasStrategy && (
         <div className="research-subsection">
           <button className="collapse-toggle" onClick={() => setShowStrategy(!showStrategy)}>
-            <strong>How We Built This Draft</strong>
+            <strong>Initial Request Analysis</strong>
             <span className="collapse-arrow">{showStrategy ? "▲" : "▼"}</span>
           </button>
           {showStrategy && (
@@ -625,18 +682,17 @@ function ResearchContext({
         </div>
       )}
 
-      {/* C: Related FOIA Requests */}
       {hasSimilar && (
         <div className="research-subsection">
           <button className="collapse-toggle" onClick={() => setShowSimilar(!showSimilar)}>
-            <strong>Related FOIA Requests</strong>
+            <strong>Similar FOIA Requests</strong>
             <span className="collapse-arrow">{showSimilar ? "▲" : "▼"}</span>
           </button>
           {showSimilar && (
             <div style={{ marginTop: "0.75rem" }}>
               {similar_requests?.length > 0 && (
                 <div style={{ marginBottom: "1rem" }}>
-                  <span className="research-label">Topic-specific requests</span>
+                  <span className="research-label status-topic">Topic-specific requests</span>
                   <ul className="similar-list">
                     {similar_requests.map((sr, i) => (
                       <li key={i}>
@@ -679,7 +735,7 @@ function ResearchContext({
               )}
               {intel?.exemption_patterns?.length > 0 && (
                 <div>
-                  <span className="research-label">Exemption-related requests</span>
+                  <span className="research-label status-exemption">Exemption-related requests</span>
                   <ul className="similar-list">
                     {intel.exemption_patterns.map((sr, i) => (
                       <li key={i}>
@@ -694,7 +750,6 @@ function ResearchContext({
         </div>
       )}
 
-      {/* D: Documents & Records Found */}
       {hasDiscovery && (
         <div className="research-subsection">
           <button className="collapse-toggle" onClick={() => setShowDiscovery(!showDiscovery)}>
@@ -726,20 +781,61 @@ function ResearchContext({
   );
 }
 
-function TimelineEntry({ comm }: { comm: Communication }) {
+function TimelineEntry({
+  comm,
+  inlineAnalysis,
+  onGenerateAppeal,
+  generating,
+  generatedLetter,
+  copiedLetter,
+  onCopyLetter,
+  onEdit,
+  onDelete,
+}: {
+  comm: Communication;
+  inlineAnalysis?: ResponseAnalysis;
+  onGenerateAppeal?: () => void;
+  generating: string | null;
+  generatedLetter?: { type: string; text: string } | null;
+  copiedLetter?: boolean;
+  onCopyLetter?: () => void;
+  onEdit: (updates: { body?: string; date?: string; subject?: string }) => void;
+  onDelete: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [analysisExpanded, setAnalysisExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [editBody, setEditBody] = useState(comm.body);
+  const [editDate, setEditDate] = useState(comm.date);
+  const [editSubject, setEditSubject] = useState(comm.subject);
   const isIncoming = comm.direction === "incoming";
+  const { names: attachmentNames, rest: bodyText } = parseAttachmentManifest(comm.body);
+
+  function handleSaveEdit() {
+    const updates: { body?: string; date?: string; subject?: string } = {};
+    if (editBody !== comm.body) updates.body = editBody;
+    if (editDate !== comm.date) updates.date = editDate;
+    if (editSubject !== comm.subject) updates.subject = editSubject;
+    if (Object.keys(updates).length > 0) onEdit(updates);
+    setEditing(false);
+  }
 
   return (
     <li className={`timeline-entry ${isIncoming ? "entry-incoming" : "entry-outgoing"}`}>
       <div className="timeline-dot" />
       <div className="timeline-content">
-        <div className="timeline-header" onClick={() => setExpanded(!expanded)}>
+        <div className="timeline-header" onClick={() => !editing && setExpanded(!expanded)}>
           <div>
             <span className="comm-type-label">
               {COMM_TYPE_LABELS[comm.comm_type] || comm.comm_type}
             </span>
             {comm.subject && <span className="comm-subject"> — {comm.subject}</span>}
+            {attachmentNames.length > 0 && (
+              <span className="attachment-badge" title={attachmentNames.join(", ")}>
+                📎 {attachmentNames.length} attachment{attachmentNames.length > 1 ? "s" : ""} included in analysis
+              </span>
+            )}
           </div>
           <div className="timeline-meta">
             <span className="timeline-date">{comm.date}</span>
@@ -749,8 +845,88 @@ function TimelineEntry({ comm }: { comm: Communication }) {
             <span className="expand-toggle">{expanded ? "▲" : "▼"}</span>
           </div>
         </div>
-        {expanded && (
-          <pre className="timeline-body">{comm.body}</pre>
+
+        {expanded && !editing && (
+          <div>
+            <pre className="timeline-body">{bodyText}</pre>
+            <div className="timeline-actions">
+              <button className="timeline-action-btn" onClick={(e) => { e.stopPropagation(); setEditing(true); }}>Edit</button>
+              <button className="timeline-action-btn timeline-action-delete" onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}>Delete</button>
+            </div>
+          </div>
+        )}
+
+        {editing && (
+          <div className="timeline-edit-form" onClick={(e) => e.stopPropagation()}>
+            <label className="form-label">
+              Date
+              <input type="date" className="form-input" value={editDate} onChange={(e) => setEditDate(e.target.value)} />
+            </label>
+            <label className="form-label">
+              Subject
+              <input type="text" className="form-input" value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
+            </label>
+            <label className="form-label">
+              Content
+              <textarea className="search-textarea" rows={4} value={editBody} onChange={(e) => setEditBody(e.target.value)} />
+            </label>
+            <div className="wizard-actions">
+              <button className="draft-button" onClick={handleSaveEdit}>Save</button>
+              <button className="wizard-cancel" onClick={() => { setEditing(false); setEditBody(comm.body); setEditDate(comm.date); setEditSubject(comm.subject); }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Inline analysis for this communication */}
+        {inlineAnalysis && !editing && (
+          <div className="inline-analysis">
+            <button
+              className="inline-analysis-toggle"
+              onClick={() => setAnalysisExpanded(!analysisExpanded)}
+            >
+              <span>
+                Analysis — <span className={`recommended-action action-${inlineAnalysis.recommended_action}`}>
+                  {inlineAnalysis.recommended_action.replace(/_/g, " ")}
+                </span>
+              </span>
+              <span className="collapse-arrow">{analysisExpanded ? "▲" : "▼"}</span>
+            </button>
+            {analysisExpanded && (
+              <div className="inline-analysis-body">
+                <AnalysisBody analysis={inlineAnalysis} />
+                {onGenerateAppeal && (
+                  <button
+                    className="draft-button"
+                    onClick={onGenerateAppeal}
+                    disabled={!!generating}
+                    style={{ marginTop: "0.75rem" }}
+                  >
+                    {generating === "appeal" ? "Generating Appeal..." : "Generate Appeal Letter"}
+                  </button>
+                )}
+                {generatedLetter && (
+                  <div className="generated-letter-card" style={{ marginTop: "1rem" }}>
+                    <h4>{generatedLetter.type === "follow_up" ? "Follow-Up Letter" : "Appeal Letter"}</h4>
+                    <div className="letter-preview">
+                      <pre className="letter-text">{generatedLetter.text}</pre>
+                      <button className="copy-button" onClick={onCopyLetter}>
+                        {copiedLetter ? "Copied!" : "Copy to Clipboard"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {confirmingDelete && (
+          <ConfirmModal
+            title="Delete communication"
+            message="Are you sure you want to delete this timeline entry? This cannot be undone."
+            onConfirm={() => { setConfirmingDelete(false); onDelete(); }}
+            onCancel={() => setConfirmingDelete(false)}
+          />
         )}
       </div>
     </li>

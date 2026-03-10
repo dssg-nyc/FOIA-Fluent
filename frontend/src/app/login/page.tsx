@@ -1,13 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [hasPendingRequest, setHasPendingRequest] = useState(false);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    setHasPendingRequest(
+      searchParams.get("next") === "track" &&
+      !!localStorage.getItem("pending_track_request")
+    );
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,6 +50,11 @@ export default function LoginPage() {
             We sent a sign-in link to <strong>{email}</strong>. Click the link
             in the email to continue.
           </p>
+          {hasPendingRequest && (
+            <p className="login-hint">
+              Your draft request will be saved automatically when you sign in.
+            </p>
+          )}
           <p className="login-hint">
             If you don&rsquo;t see it, check your spam folder.
           </p>
@@ -52,6 +67,11 @@ export default function LoginPage() {
     <main className="login-page">
       <div className="login-card">
         <h1>Sign in to FOIA Fluent</h1>
+        {hasPendingRequest && (
+          <div className="login-pending-notice">
+            Your draft request is ready to save. Sign in and it will be automatically added to your account.
+          </div>
+        )}
         <p className="login-subtitle">
           Enter your email to receive a sign-in link. No password needed.
         </p>
@@ -73,5 +93,13 @@ export default function LoginPage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

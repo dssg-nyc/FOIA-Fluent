@@ -28,6 +28,12 @@ export interface DiscoveryResponse {
   record_types: string[];
   steps: DiscoveryStep[];
   recommendation: string;
+  // Auto-identified agency and research
+  agency: AgencyInfo | null;
+  alternatives: AgencyInfo[];
+  agency_reasoning: string;
+  similar_requests: SimilarRequest[];
+  agency_intel: AgencyIntel | null;
 }
 
 // Draft types
@@ -40,6 +46,7 @@ export interface AgencyInfo {
   description: string;
   foia_regulation: string;
   submission_notes: string;
+  cfr_available: boolean;
 }
 
 export interface AgencyIdentifyResponse {
@@ -56,6 +63,7 @@ export interface DraftRequest {
   fee_waiver: boolean;
   expedited_processing: boolean;
   preferred_format: string;
+  similar_requests_prefetched?: SimilarRequest[];
 }
 
 export interface SimilarRequest {

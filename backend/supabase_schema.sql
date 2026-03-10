@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS communications (
 CREATE TABLE IF NOT EXISTS response_analyses (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id              UUID NOT NULL REFERENCES tracked_requests(id) ON DELETE CASCADE,
+    communication_id        UUID REFERENCES communications(id) ON DELETE SET NULL,  -- links analysis to the specific incoming comm
     response_complete       BOOLEAN,
     exemptions_cited        JSONB DEFAULT '[]',
     exemptions_valid        JSONB DEFAULT '[]',
@@ -94,6 +95,10 @@ CREATE TABLE IF NOT EXISTS response_analyses (
     summary                 TEXT DEFAULT '',
     analyzed_at             TIMESTAMPTZ DEFAULT now()
 );
+
+-- Migration (run if table already exists):
+-- ALTER TABLE response_analyses ADD COLUMN IF NOT EXISTS communication_id UUID REFERENCES communications(id) ON DELETE SET NULL;
+-- CREATE INDEX IF NOT EXISTS idx_analyses_communication_id ON response_analyses (communication_id);
 
 -- ── Row Level Security ─────────────────────────────────────────────────────────
 -- Each user sees only their own tracked requests, communications, and analyses.
@@ -125,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_tracked_requests_user_id  ON tracked_requests (us
 CREATE INDEX IF NOT EXISTS idx_tracked_requests_status   ON tracked_requests (status);
 CREATE INDEX IF NOT EXISTS idx_communications_request_id ON communications (request_id);
 CREATE INDEX IF NOT EXISTS idx_analyses_request_id       ON response_analyses (request_id);
+CREATE INDEX IF NOT EXISTS idx_analyses_communication_id ON response_analyses (communication_id);
 
 -- ── updated_at trigger ─────────────────────────────────────────────────────────
 

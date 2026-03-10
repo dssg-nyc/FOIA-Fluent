@@ -56,12 +56,20 @@ export default function Nav() {
             My Requests
           </Link>
         </div>
-        {userEmail && (
+        {supabase && (
           <div className="nav-user">
-            <span className="nav-user-email">{userEmail}</span>
-            <button className="nav-signout" onClick={handleSignOut}>
-              Sign out
-            </button>
+            {userEmail ? (
+              <>
+                <span className="nav-user-email">{userEmail}</span>
+                <button className="nav-signout" onClick={handleSignOut}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <Link href="/login" className="nav-link">
+                Sign in
+              </Link>
+            )}
           </div>
         )}
       </div>

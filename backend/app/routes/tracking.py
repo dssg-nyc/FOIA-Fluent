@@ -1,7 +1,8 @@
 import logging
 from datetime import date
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -9,8 +10,8 @@ from app.config import settings
 from app.middleware.auth import get_current_user_id
 from app.models.tracking import (
     AddCommunicationPayload,
-    AnalyzeResponsePayload,
     Communication,
+    UpdateCommunicationPayload,
     GeneratedLetter,
     GenerateLetterPayload,
     ImportRequestPayload,
@@ -81,6 +82,18 @@ def _add_communication(request_id: str, payload: AddCommunicationPayload, user_i
     from app.services import request_store as s
     return s.add_communication(request_id, payload)
 
+def _update_communication(comm_id: str, request_id: str, payload: UpdateCommunicationPayload, user_id: str):
+    if settings.supabase_url:
+        from app.services import supabase_store as s
+        return s.update_communication(comm_id, request_id, payload, user_id)
+    return None
+
+def _delete_communication(comm_id: str, request_id: str, user_id: str) -> bool:
+    if settings.supabase_url:
+        from app.services import supabase_store as s
+        return s.delete_communication(comm_id, request_id, user_id)
+    return False
+
 def _save_analysis(analysis: ResponseAnalysis, user_id: str) -> None:
     if settings.supabase_url:
         from app.services import supabase_store as s
@@ -96,18 +109,28 @@ def _get_analysis(request_id: str, user_id: str):
     from app.services import request_store as s
     return s.get_analysis(request_id)
 
+def _get_all_analyses(request_id: str, user_id: str):
+    if settings.supabase_url:
+        from app.services import supabase_store as s
+        return s.get_all_analyses(request_id, user_id)
+    # request_store (local dev) doesn't support per-comm analyses; return latest as list
+    analysis = _get_analysis(request_id, user_id)
+    return [analysis] if analysis else []
+
 
 # ── Detail builder ─────────────────────────────────────────────────────────────
 
 def _build_detail(request: TrackedRequest, user_id: str) -> TrackedRequestDetail:
     comms = _get_communications(request.id, user_id)
     deadline = get_deadline_info(request)
-    analysis = _get_analysis(request.id, user_id)
+    analyses = _get_all_analyses(request.id, user_id)
+    analysis = analyses[-1] if analyses else None
     return TrackedRequestDetail(
         request=request,
         communications=comms,
         deadline=deadline,
         analysis=analysis,
+        analyses=analyses,
     )
 
 
@@ -172,10 +195,36 @@ async def add_communication(
     body: AddCommunicationPayload,
     user_id: str = Depends(get_current_user_id),
 ):
+    logger.info(f"add_communication: direction={body.direction}, comm_type={body.comm_type}, subject={body.subject}")
     comm = _add_communication(request_id, body, user_id)
     if not comm:
         raise HTTPException(status_code=404, detail="Request not found")
     return comm
+
+
+@router.put("/tracking/requests/{request_id}/communications/{comm_id}")
+async def edit_communication(
+    request_id: str,
+    comm_id: str,
+    body: UpdateCommunicationPayload,
+    user_id: str = Depends(get_current_user_id),
+):
+    comm = _update_communication(comm_id, request_id, body, user_id)
+    if not comm:
+        raise HTTPException(status_code=404, detail="Communication not found")
+    return comm
+
+
+@router.delete("/tracking/requests/{request_id}/communications/{comm_id}")
+async def remove_communication(
+    request_id: str,
+    comm_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    success = _delete_communication(comm_id, request_id, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Communication not found")
+    return {"deleted": True}
 
 
 # ── Response analysis ──────────────────────────────────────────────────────────
@@ -183,34 +232,100 @@ async def add_communication(
 @router.post("/tracking/requests/{request_id}/analyze-response")
 async def analyze_response(
     request_id: str,
-    body: AnalyzeResponsePayload,
+    response_text: str = Form(...),
+    response_date: str = Form(...),
+    files: List[UploadFile] = File(default=[]),
     user_id: str = Depends(get_current_user_id),
 ):
     req = _get_request(request_id, user_id)
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    analyzer = ResponseAnalyzer(anthropic_api_key=settings.anthropic_api_key)
-    try:
-        analysis = await analyzer.analyze(req, body.response_text, body.response_date)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Analysis failed: {e}")
+    # Process any uploaded attachments into Claude content blocks
+    from app.services.file_processor import process_attachment
+    attachment_blocks: list[dict] = []
+    attachment_names: list[str] = []
+    for upload in files:
+        content = await upload.read()
+        block = await process_attachment(
+            upload.filename or "attachment",
+            content,
+            upload.content_type or "",
+        )
+        attachment_blocks.append(block)
+        attachment_names.append(upload.filename or "attachment")
 
-    _save_analysis(analysis, user_id)
+    # Build attachment manifest for the communication body
+    attachment_manifest = ""
+    if attachment_names:
+        names_str = ", ".join(attachment_names)
+        attachment_manifest = f"[Attachments: {names_str}] — included in analysis\n\n"
 
-    # Log the incoming response as a communication
-    _add_communication(
+    # Log the incoming communication FIRST so we get a communication_id
+    comm_body = attachment_manifest + response_text
+    comm = _add_communication(
         request_id,
         AddCommunicationPayload(
             direction="incoming",
             comm_type="response",
-            subject=f"Agency response — {body.response_date}",
-            body=body.response_text,
-            date=body.response_date,
+            subject=f"Agency response — {response_date}",
+            body=comm_body,
+            date=response_date,
         ),
         user_id,
     )
+    communication_id = comm.id if comm else None
 
+    # Build full conversation history for context (both directions)
+    prior_analyses = _get_all_analyses(request_id, user_id)
+    prior_comms = _get_communications(request_id, user_id)
+    analyses_by_comm = {a.communication_id: a for a in prior_analyses if a.communication_id}
+
+    # Sort chronologically, exclude the comm we just created
+    sorted_comms = sorted(
+        [c for c in prior_comms if c.id != communication_id],
+        key=lambda c: c.date,
+    )
+
+    prior_exchanges: list[dict] = []
+    for c in sorted_comms:
+        entry: dict = {
+            "date": c.date,
+            "direction": c.direction,
+            "type": c.comm_type,
+            "body": c.body[:500],
+        }
+        # Attach analysis summary if this was an analyzed incoming response
+        linked_analysis = analyses_by_comm.get(c.id)
+        if linked_analysis:
+            entry["analysis_summary"] = linked_analysis.summary
+            entry["recommended_action"] = linked_analysis.recommended_action
+        prior_exchanges.append(entry)
+
+    analyzer = ResponseAnalyzer(anthropic_api_key=settings.anthropic_api_key)
+    try:
+        analysis = await analyzer.analyze(
+            req,
+            response_text,
+            response_date,
+            prior_exchanges=prior_exchanges,
+            attachments=attachment_blocks,
+            communication_id=communication_id,
+        )
+    except Exception as e:
+        # Roll back the communication we just created
+        if communication_id:
+            _delete_communication(communication_id, request_id, user_id)
+
+        error_msg = str(e)
+        if "rate_limit" in error_msg or "429" in error_msg or "input tokens" in error_msg.lower():
+            raise HTTPException(
+                status_code=413,
+                detail="Attachments too large to process. Try uploading smaller files, fewer files, or paste the response text instead.",
+            )
+        raise HTTPException(status_code=502, detail=f"Analysis failed: {e}")
+
+    _save_analysis(analysis, user_id)
     return analysis
 
 
