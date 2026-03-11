@@ -40,8 +40,14 @@ export default function Nav() {
         </Link>
         <div className="nav-links">
           <Link
-            href="/"
-            className={`nav-link ${pathname === "/" ? "nav-link-active" : ""}`}
+            href="/hub"
+            className={`nav-link ${pathname.startsWith("/hub") ? "nav-link-active" : ""}`}
+          >
+            Data Hub
+          </Link>
+          <Link
+            href="/draft"
+            className={`nav-link ${pathname === "/draft" ? "nav-link-active" : ""}`}
           >
             Search & Draft
           </Link>

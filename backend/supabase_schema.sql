@@ -26,6 +26,41 @@ CREATE TABLE IF NOT EXISTS agency_profiles (
     updated_at              TIMESTAMPTZ DEFAULT now()
 );
 
+-- ── Agency Stats Cache ─────────────────────────────────────────────────────────
+-- MuckRock aggregate stats per agency, refreshed weekly by refresh_hub_stats.py.
+-- No RLS: public reference data for the Data Hub.
+
+CREATE TABLE IF NOT EXISTS agency_stats_cache (
+    id                          BIGINT PRIMARY KEY,   -- MuckRock agency ID
+    name                        TEXT NOT NULL,
+    slug                        TEXT NOT NULL,
+    jurisdiction                TEXT DEFAULT '',
+    absolute_url                TEXT DEFAULT '',
+    average_response_time       FLOAT DEFAULT 0,
+    fee_rate                    FLOAT DEFAULT 0,
+    success_rate                FLOAT DEFAULT 0,
+    number_requests             INT DEFAULT 0,
+    number_requests_completed   INT DEFAULT 0,
+    number_requests_rejected    INT DEFAULT 0,
+    number_requests_no_docs     INT DEFAULT 0,
+    number_requests_ack         INT DEFAULT 0,
+    number_requests_resp        INT DEFAULT 0,
+    number_requests_fix         INT DEFAULT 0,
+    number_requests_appeal      INT DEFAULT 0,
+    number_requests_pay         INT DEFAULT 0,
+    number_requests_partial     INT DEFAULT 0,
+    number_requests_lawsuit     INT DEFAULT 0,
+    number_requests_withdrawn   INT DEFAULT 0,
+    has_portal                  BOOLEAN DEFAULT FALSE,
+    transparency_score          FLOAT DEFAULT 0,      -- computed composite 0–100
+    refreshed_at                TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agency_stats_score
+    ON agency_stats_cache (transparency_score DESC);
+CREATE INDEX IF NOT EXISTS idx_agency_stats_slug
+    ON agency_stats_cache (slug);
+
 -- ── Agency Intel Cache ─────────────────────────────────────────────────────────
 -- Dynamic MuckRock outcome data, shared across users, refreshed with 24hr TTL.
 -- No RLS: shared reference data.
@@ -99,6 +134,17 @@ CREATE TABLE IF NOT EXISTS response_analyses (
 -- Migration (run if table already exists):
 -- ALTER TABLE response_analyses ADD COLUMN IF NOT EXISTS communication_id UUID REFERENCES communications(id) ON DELETE SET NULL;
 -- CREATE INDEX IF NOT EXISTS idx_analyses_communication_id ON response_analyses (communication_id);
+
+-- Migration: add granular outcome columns to agency_stats_cache (run if table already exists):
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_no_docs   INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_ack        INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_resp       INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_fix        INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_appeal     INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_pay        INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_partial    INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_lawsuit    INT DEFAULT 0;
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS number_requests_withdrawn  INT DEFAULT 0;
 
 -- ── Row Level Security ─────────────────────────────────────────────────────────
 -- Each user sees only their own tracked requests, communications, and analyses.

@@ -126,7 +126,7 @@ CREATE POLICY "users_own_requests" ON tracked_requests
 - `services/search.py` — orchestrates the unified discovery pipeline
 - `services/drafter.py` — `research_similar_requests()` runs agency-scoped MuckRock searches using interpreter's `foia_queries`
 - `routes/search.py` — `/api/v1/search` endpoint
-- `app/page.tsx` — multi-step wizard: query → results → proceed to draft
+- `app/draft/page.tsx` — multi-step wizard: query → results → proceed to draft
 
 **Discovery pipeline flow:**
 1. Claude interprets query → generates `foia_queries`, `document_queries`, `public_records_queries`
@@ -284,6 +284,49 @@ BACKEND_CORS_ORIGINS=["https://your-app.vercel.app","http://localhost:3000"]
 
 ---
 
+## Phase 6: FOIA Transparency Data Hub (Complete)
+
+**Goal:** Public-facing transparency dashboard surfacing aggregated FOIA data across ~1,600 federal agencies. No authentication required.
+
+**Architecture:**
+```
+/hub (public, no auth)
+├── Global dashboard — overall stats, leaderboards, charts
+└── /hub/[slug] — per-agency deep-dive
+
+Backend
+├── GET /api/v1/hub/stats        — global summary metrics
+├── GET /api/v1/hub/agencies     — paginated/filterable agency list
+└── GET /api/v1/hub/agencies/{slug} — single agency detail
+
+Supabase
+└── agency_stats_cache           — MuckRock stats, refreshed weekly
+```
+
+**Transparency Score** (0–100): weighted composite
+- Success rate: 40%
+- Response speed (inverse of avg days / 60, capped): 30%
+- Fee rate (inverse): 15%
+- Portal availability: 15%
+
+**Data pipeline:**
+1. `python -m app.scripts.refresh_hub_stats` — fetches all agencies from MuckRock's paginated `/agency/` API, upserts into `agency_stats_cache`
+2. Backend computes transparency score at upsert time, stores in cache
+3. Frontend reads from cache via hub API; no live MuckRock calls on page load
+
+**Key files:**
+- `backend/app/services/hub.py` — HubService with global stats aggregation and agency pagination
+- `backend/app/routes/hub.py` — public endpoints (no `Depends(get_current_user)`)
+- `backend/app/models/hub.py` — GlobalStats, AgencyStats, AgencyDetail Pydantic models
+- `backend/app/scripts/refresh_hub_stats.py` — standalone refresh script
+- `frontend/src/app/hub/page.tsx` — global dashboard with recharts visualizations
+- `frontend/src/app/hub/[slug]/page.tsx` — per-agency deep-dive
+- `frontend/src/lib/hub-api.ts` — typed API client
+
+**Homepage:** Root `/` redirects to `/hub`. Search & Draft moved to `/draft`.
+
+---
+
 ## Future Phases
 
 ### Phase 5: Beyond FOIA
@@ -292,10 +335,3 @@ Alternative pathways when FOIA fails:
 - Congressional inquiry templates
 - Inspector General complaint generator
 - State public records law engine (FOIL, CPRA, PIA, Sunshine Law)
-
-### Phase 6: Data Hub
-
-Agency transparency metrics:
-- Response rate, median response time, exemption frequency by agency
-- Public leaderboard — most/least transparent agencies
-- Crowdsourced exemption validity scores from community appeals
