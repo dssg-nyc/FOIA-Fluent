@@ -22,28 +22,6 @@
   --radius-sm: 8px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0f0f0f;
-    --foreground: #ededed;
-    --border: #333333;
-    --muted: #9ca3af;
-    --primary: #5DADE2;
-    --primary-hover: #85C1E9;
-    --primary-light: #1B2631;
-    --accent: #F0B27A;
-    --accent-hover: #E59866;
-    --accent-light: #2C1A0E;
-    --surface: #1a1a1a;
-    --green: #34d399;
-    --green-bg: #052e16;
-    --red: #f87171;
-    --amber: #fbbf24;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
-    --shadow-lg: 0 8px 30px rgba(0,0,0,0.4);
-  }
-}
 
 * {
   box-sizing: border-box;
