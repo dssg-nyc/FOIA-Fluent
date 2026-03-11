@@ -1938,6 +1938,10 @@ h1, h2, h3 {
   color: var(--foreground);
 }
 
+.research-subsection p {
+  color: var(--foreground);
+}
+
 .research-tips {
   margin: 0;
   padding-left: 1.25rem;

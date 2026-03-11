@@ -21,6 +21,7 @@ from app.models.tracking import (
     TrackRequestPayload,
     UpdateRequestPayload,
 )
+from app.services.agency_profiles import get_agency_profile
 from app.services.deadline_calculator import get_deadline_info
 from app.services.letter_generator import LetterGenerator
 from app.services.response_analyzer import ResponseAnalyzer
@@ -125,6 +126,22 @@ def _build_detail(request: TrackedRequest, user_id: str) -> TrackedRequestDetail
     deadline = get_deadline_info(request)
     analyses = _get_all_analyses(request.id, user_id)
     analysis = analyses[-1] if analyses else None
+
+    # Live lookup: refresh submission info from current agency_profiles
+    abbr = request.agency.abbreviation if request.agency else None
+    if abbr:
+        profile = get_agency_profile(abbr)
+        if profile:
+            parts = []
+            if profile.get("foia_website"):
+                parts.append(f"Portal: {profile['foia_website']}")
+            if profile.get("foia_email"):
+                parts.append(f"Email: {profile['foia_email']}")
+            if profile.get("submission_notes"):
+                parts.append(profile["submission_notes"])
+            if parts:
+                request.submission_info = " | ".join(parts)
+
     return TrackedRequestDetail(
         request=request,
         communications=comms,
