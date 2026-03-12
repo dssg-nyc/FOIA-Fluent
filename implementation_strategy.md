@@ -10,1071 +10,328 @@ A technical blueprint for building the platform from scratch. All recommendation
 2. [Recommended Tech Stack](#recommended-tech-stack)
 3. [Data Model](#data-model)
 4. [API Integrations](#api-integrations)
-5. [MCP Architecture](#mcp-architecture)
-6. [State Law Engine](#state-law-engine)
-7. [Phase 1: Document Discovery](#phase-1-document-discovery)
-8. [Phase 2: Request Intelligence](#phase-2-request-intelligence)
-9. [Phase 3: Response & Negotiation](#phase-3-response--negotiation)
-10. [Phase 4: Beyond FOIA](#phase-4-beyond-foia)
-11. [Phase 5: Data Hub](#phase-5-data-hub)
-12. [Deployment Strategy](#deployment-strategy)
-13. [Development Roadmap](#development-roadmap)
+5. [Phase 1: Document Discovery](#phase-1-document-discovery)
+6. [Phase 2: Request Intelligence](#phase-2-request-intelligence)
+7. [Phase 3: Response & Negotiation](#phase-3-response--negotiation)
+8. [Phase 4: Import & Backfill](#phase-4-import--backfill)
+9. [Deployment Strategy](#deployment-strategy)
+10. [Future Phases](#future-phases)
 
 ---
 
 ## System Architecture
 
 ```
-+------------------+        +-------------------+        +--------------------+
-|                  |        |                   |        |                    |
-|   Web Frontend   | <----> |   MCP Server      | <----> |   Supabase         |
-|   (Next.js)      |  HTTP  |   (FastAPI)       |  SQL   |   (PostgreSQL)     |
-|                  |  SSE   |                   |        |                    |
-+------------------+        +--------+----------+        +---------+----------+
-                                     |                             |
-                                     | HTTP                        | pgvector
-                                     v                             v
-                            +--------+----------+        +---------+----------+
-                            |  External APIs    |        |  Semantic Search   |
-                            |                   |        |  (embeddings for   |
-                            |  - MuckRock API   |        |   past requests,   |
-                            |  - DocumentCloud  |        |   FOIA laws, etc.) |
-                            |  - data.gov       |        |                    |
-                            |  - Claude API     |        +--------------------+
-                            +-------------------+
-```
-
-### Request Flow
-
-```
-User enters search query
-        |
-        v
-+-------+--------+
-| Next.js Frontend|----> SSE connection for streaming results
-+-------+--------+
-        | POST /api/search
-        v
-+-------+--------+
-| FastAPI Server  |----> Validates, routes, orchestrates
-+-------+--------+
-        |
-        +-------+--------+--------+
-        |       |        |        |
-        v       v        v        v
-   MuckRock  DocCloud  data.gov  Supabase
-     API       API      API     (cached)
-        |       |        |        |
-        +-------+--------+--------+
-        |
-        v
-  Deduplicate, rank, return results
-        |
-        v
-  Cache in Supabase for future queries
+Frontend (Next.js 14)          Backend (FastAPI)              External Services
+┌──────────────────┐          ┌──────────────────────┐       ┌─────────────────┐
+│                  │   HTTP   │                      │       │ Claude API      │
+│  Search + Draft  │ ──────> │  Query Interpreter    │ ────> │ (Anthropic)     │
+│  Wizard          │          │  FOIA Drafter         │       │                 │
+│  Request Tracker │          │  Agency Intel Agent   │       │ Tavily Search   │
+│  Dashboard       │          │  Response Analyzer    │       │ (MuckRock,      │
+│                  │ <────── │  Letter Generator     │       │  DocumentCloud) │
+│  Next.js App     │          │  Deadline Calculator  │       │                 │
+│  Router          │          │  File Processor       │       │ MuckRock API    │
+└──────────────────┘          │                      │       │ DocumentCloud   │
+                              │  Verified Data:       │       │ API             │
+                              │  - 52 federal agencies│       └─────────────────┘
+                              │  - FOIA statute text  │
+                              │  - Verbatim CFR text  │       ┌─────────────────┐
+                              │  - Agency intel cache │       │ Supabase        │
+                              └──────────────────────┘       │ (PostgreSQL +   │
+                                                             │  Auth + RLS)    │
+                                                             └─────────────────┘
 ```
 
 ---
 
 ## Recommended Tech Stack
 
-### Backend: FastAPI (Python)
-
-| Option | Pros | Cons | Verdict |
-|--------|------|------|---------|
-| **FastAPI** | Async-native, built-in OpenAPI docs, SSE support, lightweight | Smaller ecosystem than Django | **Recommended** |
-| Django | Batteries-included, ORM, admin panel | Heavier, sync by default, overkill for API-first app | Good for later if admin needed |
-| Flask | Simple, familiar | No async, no built-in validation | Too bare-bones |
-
-**Why FastAPI:** The platform is API-first with streaming needs (SSE for real-time search results). FastAPI's async support, automatic request validation via Pydantic, and built-in `/docs` endpoint accelerate development. The MCP protocol maps naturally to FastAPI's routing.
-
-### Database: Supabase (PostgreSQL)
-
-| Option | Free Tier | Pros | Cons |
-|--------|-----------|------|------|
-| **Supabase** | 500MB DB, 1GB storage, 50K monthly active users | Managed Postgres, REST API, pgvector, auth, realtime | Vendor lock-in risk |
-| Neon | 512MB storage, 1 project | Serverless Postgres, branching | Fewer built-in features |
-| PlanetScale | Deprecated free tier | MySQL-based | Not PostgreSQL |
-
-**Why Supabase:** Free Postgres with pgvector (critical for semantic search over past FOIA requests and legal text), built-in auth, REST API, and a dashboard. The Row Level Security model works well for multi-user access control.
-
-### Frontend: Next.js
-
-| Option | Pros | Cons |
-|--------|------|------|
-| **Next.js** | SSR/SSG, API routes, Vercel free hosting, React ecosystem | Heavier than SPA for simple apps |
-| SvelteKit | Lightweight, fast | Smaller ecosystem |
-| Plain React SPA | Simple | No SSR, worse SEO |
-
-**Why Next.js:** Free Vercel deployment, SSR for public-facing pages (important for grant reviewers and SEO), and API routes that can proxy to FastAPI during development.
-
-### AI/LLM: Claude API (Anthropic)
-
-For request drafting, legal analysis, and document summarization. Claude's large context window is well-suited for processing long FOIA documents and legal text. Use the Anthropic SDK directly from FastAPI.
-
-### Hosting
-
-| Service | Free Tier | Use For |
-|---------|-----------|---------|
-| **Vercel** | Unlimited static, 100GB bandwidth | Next.js frontend |
-| **Railway** | $5/month credit (hobby) | FastAPI backend |
-| **Supabase** | 500MB DB, 1GB storage | PostgreSQL + auth |
-| **GitHub Actions** | 2,000 min/month | CI/CD |
+| Layer | Technology | Why |
+|-------|-----------|-----|
+| Backend | FastAPI (Python 3.11) | Async-native, built-in OpenAPI docs, Pydantic validation |
+| Frontend | Next.js 14 (React 18, TypeScript) | App Router, SSR, Vercel-ready |
+| AI | Claude API (claude-sonnet-4-20250514) | Large context window, structured output, strong at legal text |
+| Search | Tavily API | Domain-scoped web search across MuckRock and DocumentCloud |
+| Database | Supabase (PostgreSQL + Auth) | RLS, magic link auth, free tier suitable for MVP |
+| Backend Deploy | Railway | Zero-config Python deploys, nixpacks auto-detection |
+| Frontend Deploy | Vercel | Zero-config Next.js deploys, monorepo support |
 
 ---
 
 ## Data Model
 
-### Core Tables
+### Supabase Tables
+
+**`agency_profiles`** — static reference data, no RLS
+- `abbreviation` (PK), `name`, `jurisdiction`, `foia_email`, `foia_website`
+- `foia_regulation`, `submission_notes`, `description`
+- `cfr_summary`, `exemption_tendencies`, `routing_notes`
+- `cfr_text` — verbatim regulation text fetched from eCFR (up to 50k chars)
+- `cfr_last_fetched`
+
+**`agency_intel_cache`** — MuckRock research cache, no RLS
+- `agency_abbreviation`, `intel_json` (JSONB), `fetched_at`
+- 24-hour TTL enforced in application layer
+
+**`tracked_requests`** — user FOIA requests, RLS by `user_id`
+- `id`, `user_id`, `title`, `description`, `status`
+- `agency` (JSONB — full `AgencyInfo` including `cfr_available`)
+- `letter_text`, `requester_name`, `requester_organization`
+- `filed_date`, `statute_cited`
+- `key_elements`, `tips` (JSONB arrays)
+- `submission_info`, `similar_requests`, `drafting_strategy`, `agency_intel`, `discovery_results` (JSONB)
+- `created_at`, `updated_at` (auto-trigger)
+
+**`communications`** — correspondence log, RLS by `user_id` via `request_id`
+- `id`, `request_id`, `user_id`, `direction` (incoming/outgoing)
+- `comm_type`, `subject`, `body`, `date`
+
+**`response_analyses`** — Claude's analysis of agency responses, RLS by `user_id`
+- `id`, `request_id`, `user_id`, `communication_id`
+- `completeness`, `recommended_action`, `exemptions_cited`
+- `grounds_for_appeal`, `missing_records`, `negotiation_points`, `summary`
+
+### RLS Policy Pattern
 
 ```sql
--- Government agencies that receive FOIA requests
-CREATE TABLE agencies (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name            TEXT NOT NULL,
-    abbreviation    TEXT,
-    jurisdiction    TEXT NOT NULL,        -- 'federal', 'state:CA', etc.
-    foia_portal_url TEXT,
-    avg_response_days INTEGER,
-    denial_rate     DECIMAL(5,2),
-    created_at      TIMESTAMPTZ DEFAULT now(),
-    updated_at      TIMESTAMPTZ DEFAULT now()
-);
+-- User data tables: strict isolation
+CREATE POLICY "users_own_requests" ON tracked_requests
+  USING (auth.uid()::text = user_id);
 
--- FOIA laws and regulations by jurisdiction
-CREATE TABLE foia_laws (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    jurisdiction    TEXT NOT NULL,        -- 'federal', 'state:CA', etc.
-    law_name        TEXT NOT NULL,        -- 'FOIA', 'CPRA', etc.
-    statute_ref     TEXT,
-    exemptions      JSONB,               -- structured exemption categories
-    appeal_process  TEXT,
-    time_limits     JSONB,               -- { initial_response: 20, appeal: 30 }
-    content         TEXT,                 -- full text for semantic search
-    embedding       vector(1536)         -- pgvector for semantic search
-);
-
--- Users of the platform
-CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email           TEXT UNIQUE NOT NULL,
-    name            TEXT,
-    organization    TEXT,
-    role            TEXT DEFAULT 'requester',  -- requester, journalist, lawyer, admin
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
-
--- FOIA requests (both imported from MuckRock and user-created)
-CREATE TABLE requests (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID REFERENCES users(id),
-    agency_id       UUID REFERENCES agencies(id),
-    title           TEXT NOT NULL,
-    request_text    TEXT NOT NULL,
-    status          TEXT DEFAULT 'draft',  -- draft, submitted, processing,
-                                           -- fulfilled, denied, appealed, litigated
-    muckrock_id     INTEGER,              -- link to MuckRock if imported/filed there
-    jurisdiction    TEXT,
-    filed_date      DATE,
-    due_date        DATE,
-    source          TEXT DEFAULT 'user',   -- 'user', 'muckrock_import', 'generated'
-    success_score   DECIMAL(3,2),          -- AI-predicted success probability
-    embedding       vector(1536),          -- for finding similar requests
-    created_at      TIMESTAMPTZ DEFAULT now(),
-    updated_at      TIMESTAMPTZ DEFAULT now()
-);
-
--- Communications (correspondence for a request)
-CREATE TABLE communications (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    request_id      UUID REFERENCES requests(id) ON DELETE CASCADE,
-    direction       TEXT NOT NULL,         -- 'outgoing', 'incoming'
-    subject         TEXT,
-    body            TEXT NOT NULL,
-    sent_date       TIMESTAMPTZ,
-    sender          TEXT,
-    attachments     JSONB,                -- [{filename, url, size}]
-    comm_type       TEXT DEFAULT 'email', -- email, letter, portal_message
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
-
--- Documents received or found
-CREATE TABLE documents (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    request_id      UUID REFERENCES requests(id),
-    title           TEXT NOT NULL,
-    source          TEXT,                  -- 'muckrock', 'documentcloud', 'data.gov', 'upload'
-    source_url      TEXT,
-    file_url        TEXT,
-    file_type       TEXT,                  -- 'pdf', 'csv', 'doc', etc.
-    page_count      INTEGER,
-    has_redactions   BOOLEAN DEFAULT false,
-    summary         TEXT,                  -- AI-generated summary
-    embedding       vector(1536),
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
-
--- Search cache to avoid redundant API calls
-CREATE TABLE search_cache (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    query_hash      TEXT NOT NULL,
-    source          TEXT NOT NULL,          -- 'muckrock', 'documentcloud', 'data.gov'
-    results         JSONB NOT NULL,
-    expires_at      TIMESTAMPTZ NOT NULL,
-    created_at      TIMESTAMPTZ DEFAULT now()
-);
-
--- Agency performance tracking
-CREATE TABLE agency_metrics (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    agency_id       UUID REFERENCES agencies(id),
-    year            INTEGER NOT NULL,
-    total_requests  INTEGER,
-    fulfilled       INTEGER,
-    denied          INTEGER,
-    avg_days        INTEGER,
-    common_exemptions JSONB,
-    created_at      TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(agency_id, year)
-);
-```
-
-### Entity Relationship Diagram
-
-```
-users 1──────< requests >──────1 agencies
-                  |
-                  |
-          +-------+-------+
-          |               |
-    communications     documents
-
-foia_laws (standalone, linked by jurisdiction)
-agency_metrics >──────1 agencies
-search_cache (standalone, TTL-based)
+-- Reference tables: public read, service-role write
+-- No RLS on agency_profiles, agency_intel_cache
 ```
 
 ---
 
 ## API Integrations
 
-### MuckRock API
+| API | Usage | Key Notes |
+|-----|-------|-----------|
+| Anthropic (Claude) | Drafting, analysis, letter generation, query interpretation, agency identification | `claude-sonnet-4-20250514`, async client |
+| Tavily | MuckRock search, DocumentCloud search, agency intel research | Domain-scoped, `include_domains` filter |
+| MuckRock | Existing FOIA requests, outcomes | Public API, no auth required |
+| DocumentCloud | Public interest documents | Public API |
+| eCFR | Verbatim CFR regulation text | `GET /api/renderer/v1/content/enhanced/current/title-{N}?part={N}` |
 
-**Base URL:** `https://www.muckrock.com/api_v1/`
-**Auth:** Username/password credentials via `python-muckrock` client
-**Key Endpoints:**
+---
 
-| Endpoint | Purpose | Usage |
-|----------|---------|-------|
-| `GET /foia/` | Search existing FOIA requests | Phase 1: find existing docs |
-| `GET /agency/` | Look up agencies by name/jurisdiction | Phase 1 & 2: identify correct agency |
-| `GET /foia/{id}/communications/` | Get correspondence for a request | Phase 3: import communication history |
-| `GET /foia/{id}/files/` | Download documents from a request | Phase 1: retrieve found documents |
-| `GET /jurisdiction/` | List jurisdictions | Phase 2: match to correct FOIA laws |
-| `POST /foia/` | File a new FOIA request | Phase 2: submit requests via MuckRock |
+## Phase 1: Document Discovery & Agency Identification (Complete)
 
-**Integration pattern:**
+**Goal:** Auto-identify the best agency, search for similar prior FOIA requests, and find publicly available documents — all before filing a new request.
+
+**Components:**
+- `services/query_interpreter.py` — Claude parses natural language query, identifies agencies + record types, generates optimized search queries for each source
+- `services/search.py` — orchestrates the unified discovery pipeline
+- `services/drafter.py` — `research_similar_requests()` runs agency-scoped MuckRock searches using interpreter's `foia_queries`
+- `routes/search.py` — `/api/v1/search` endpoint
+- `app/draft/page.tsx` — multi-step wizard: query → results → proceed to draft
+
+**Discovery pipeline flow:**
+1. Claude interprets query → generates `foia_queries`, `document_queries`, `public_records_queries`
+2. **Parallel**: identify agency (via `drafter.identify_agency()`) + search public documents (DocumentCloud + Tavily)
+3. **Sequential**: agency-scoped MuckRock search using interpreter's optimized queries (up to 3 parallel queries, deduplicated)
+4. Return: identified agency + similar FOIA requests + public documents + recommendation
+
+**Key design decisions:**
+- `asyncio.gather()` for parallel search across all sources
+- Results merged and deduplicated by URL
+- Agency identification happens during discovery (not as a separate step during drafting)
+- `DiscoveryResponse` includes `agency`, `alternatives`, `agency_reasoning`, `similar_requests`
+- Multi-query approach: `foia_queries` from interpreter are short, targeted queries (e.g., "ICE detention death reviews") rather than the raw user input
+
+---
+
+## Phase 2: Request Intelligence & Drafting (Complete)
+
+**Goal:** Generate a legally sound FOIA letter using verified context, not hallucinated citations.
+
+**Anti-hallucination architecture:**
+1. `data/federal_foia_statute.py` — full 5 U.S.C. § 552 text (all 9 exemptions, fee waiver, expedited processing provisions)
+2. `data/federal_agencies.py` + Supabase `agency_profiles` — verified FOIA contact info and CFR citations for 52 agencies
+3. Supabase `agency_profiles.cfr_text` — verbatim CFR regulation text fetched from eCFR, injected verbatim into every prompt
+4. `services/agency_intel.py` — real-time MuckRock research on agency's FOIA track record (24-hour cache)
+
+**Unified research flow:**
+- If the user keeps the same agency from discovery, `similar_requests_prefetched` is passed to `generate_draft()` — skipping a duplicate MuckRock search
+- If the user picks a different agency, the draft re-fetches similar requests for the new agency
+- Agency intel (success/denial/exemption patterns) always runs fresh (cached with 24h TTL)
+
+**Store dispatcher pattern** (`routes/tracking.py`):
 ```python
-# app/services/muckrock.py
-from muckrock import MuckRock
-
-class MuckRockService:
-    def __init__(self):
-        self.client = MuckRock(
-            username=settings.MUCKROCK_USERNAME,
-            password=settings.MUCKROCK_PASSWORD
-        )
-
-    async def search_requests(self, query: str, agency: str = None) -> list[dict]:
-        """Search existing FOIA requests on MuckRock."""
-        params = {"q": query, "status": "done"}
-        if agency:
-            params["agency"] = agency
-        return self.client.foia.get(**params)
-
-    async def get_agency(self, name: str, jurisdiction: str = None) -> dict:
-        """Find an agency by name and optional jurisdiction."""
-        return self.client.agency.get(name=name, jurisdiction=jurisdiction)
+def _get_request(request_id, user_id):
+    if settings.supabase_url:
+        return supabase_store.get_request(request_id, user_id)
+    return request_store.get_request(request_id)
 ```
+All route handlers use dispatcher functions — no direct store imports. Enables local dev without Supabase.
 
-### DocumentCloud API
-
-**Base URL:** `https://api.www.documentcloud.org/api/`
-**Auth:** Bearer token (free account)
-**Key Endpoints:**
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /documents/search/?q=` | Full-text search across public documents |
-| `GET /documents/{id}/` | Get document metadata |
-| `GET /documents/{id}/pages/` | Get individual pages with OCR text |
-
-### data.gov CKAN API
-
-**Base URL:** `https://catalog.data.gov/api/3/`
-**Auth:** None (public)
-**Key Endpoints:**
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /action/package_search?q=` | Search datasets |
-| `GET /action/package_show?id=` | Get dataset details |
-
----
-
-## MCP Architecture
-
-The Model Context Protocol (MCP) provides a standardized way for LLM clients to interact with external tools and data. FOIA Fluent uses MCP to expose its capabilities as tools that any MCP-compatible AI client (Claude Desktop, custom apps) can invoke.
-
-### MCP Server Design
-
-```
-MCP Client (Claude Desktop, Web App, etc.)
-        |
-        | JSON-RPC over HTTP/SSE
-        v
-+-------+------------------+
-|   MCP Server (FastAPI)   |
-|                          |
-|   Tools:                 |
-|   - search_documents     |
-|   - draft_request        |
-|   - check_status         |
-|   - analyze_response     |
-|   - find_agency          |
-|   - get_foia_law         |
-|   - suggest_appeal       |
-|                          |
-|   Resources:             |
-|   - foia://laws/{state}  |
-|   - foia://agency/{id}   |
-|   - foia://request/{id}  |
-+-------+------------------+
-        |
-        v
-   Internal Services
-   (MuckRock, DocumentCloud, Supabase, Claude API)
-```
-
-### MCP Tool Definitions
-
+**Parallel research agents:**
 ```python
-# app/mcp/tools.py
-
-tools = [
-    {
-        "name": "search_documents",
-        "description": "Search for existing FOIA documents and public records across "
-                       "MuckRock, DocumentCloud, and data.gov",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "What documents to search for"},
-                "agency": {"type": "string", "description": "Optional: specific agency name"},
-                "jurisdiction": {"type": "string", "description": "Optional: federal, or state code"},
-                "date_range": {"type": "string", "description": "Optional: e.g. 2020-2024"}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "draft_request",
-        "description": "Generate an optimized FOIA request letter for a specific agency "
-                       "and document need, using state-specific laws and best practices",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "description": {"type": "string", "description": "What records are needed and why"},
-                "agency": {"type": "string", "description": "Target agency name"},
-                "jurisdiction": {"type": "string", "description": "federal or state code"}
-            },
-            "required": ["description", "agency"]
-        }
-    },
-    {
-        "name": "analyze_response",
-        "description": "Analyze an agency response for completeness, improper redactions, "
-                       "and potential grounds for appeal",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "response_text": {"type": "string", "description": "The agency's response letter text"},
-                "original_request": {"type": "string", "description": "The original request text"},
-                "jurisdiction": {"type": "string", "description": "federal or state code"}
-            },
-            "required": ["response_text"]
-        }
-    }
-]
+tasks = [research_similar_requests(agency, description)]
+if intel_agent:
+    tasks.append(intel_agent.research_agency(abbreviation, name))
+results = await asyncio.gather(*tasks)
 ```
 
 ---
 
-## State Law Engine
+## Phase 3: Response & Negotiation Tracking (Complete)
 
-Every US state has its own public records law. The platform must treat jurisdiction as a first-class concept — not an afterthought. This section describes how multi-jurisdiction support works across the entire system.
+**Goal:** Track requests end-to-end with deadline monitoring, response analysis, and letter generation.
 
-### The Problem
+**Deadline calculator** (`services/deadline_calculator.py`):
+- 20 business-day statutory deadline (5 U.S.C. § 552(a)(6)(A)(i))
+- Skips weekends and federal holidays (hardcoded 2025–2027)
+- Returns days elapsed, days remaining, overdue flag, human-readable label
 
-| Dimension | Federal FOIA | NY FOIL | CA CPRA | TX PIA |
-|-----------|-------------|---------|---------|--------|
-| **Statute** | 5 U.S.C. 552 | Public Officers Law Art. 6 | Gov. Code 7920-7931 | Gov. Code Ch. 552 |
-| **Response deadline** | 20 business days | 5 days to acknowledge, ~20 to respond | 10 days (+ 14 day extension) | 10 business days |
-| **Exemptions** | 9 categories (b)(1)-(9) | 8 categories, narrower scope | Broad + catch-all balancing test | Narrow, AG decides disputes |
-| **Appeal body** | Agency head, then OGIS, then court | COOG (Committee on Open Government) | Superior Court | Attorney General |
-| **Fee structure** | Search + review + duplication | $0.25/page max | 10 cents/page, direct cost only | Cost of materials only |
-| **Penalties** | None for non-compliance | Possible attorney fees | $1,000/day willful violation | Criminal misdemeanor possible |
+**Response analyzer** (`services/response_analyzer.py`):
+- Claude evaluates completeness, validates each exemption cited against statute text
+- Identifies missing records, negotiation points
+- Recommends: accept / follow-up / appeal / negotiate scope
+- Analysis is tied to specific `communication_id` for inline display
 
-Every one of these differences affects request drafting, deadline tracking, appeal generation, and success prediction.
+**Letter generator** (`services/letter_generator.py`):
+- `follow_up` — cites statutory deadline, days elapsed, demands response
+- `appeal` — challenges each exemption with legal reasoning, cites OGIS mediation option
+- Generated letters display inline within the timeline card (not as a separate bottom section)
 
-### Data Architecture
-
-The `foia_laws` table stores structured law data per jurisdiction:
-
-```sql
--- Example seed data for NY FOIL
-INSERT INTO foia_laws (jurisdiction, law_name, statute_ref, exemptions, appeal_process, time_limits, content)
-VALUES (
-    'state:NY',
-    'Freedom of Information Law (FOIL)',
-    'N.Y. Public Officers Law, Article 6, Sections 84-90',
-    '{
-        "categories": [
-            {"code": "87(2)(a)", "name": "Trade secrets", "description": "Trade secrets or information maintained for regulation of commercial enterprise"},
-            {"code": "87(2)(b)", "name": "Unwarranted invasion of privacy", "description": "Would constitute an unwarranted invasion of personal privacy"},
-            {"code": "87(2)(e)", "name": "Law enforcement", "description": "Compiled for law enforcement purposes"},
-            {"code": "87(2)(f)", "name": "Safety/security", "description": "Could endanger life or safety"},
-            {"code": "87(2)(g)", "name": "Inter/intra-agency materials", "description": "Inter-agency or intra-agency materials except statistical data, instructions, or final policy"}
-        ]
-    }'::jsonb,
-    'Administrative appeal to agency head within 30 days. Then appeal to COOG (Committee on Open Government) for advisory opinion. Then Article 78 proceeding in court.',
-    '{"acknowledge": 5, "initial_response": 20, "appeal_deadline": 30, "unit": "business_days"}'::jsonb,
-    'Full text of FOIL statute for semantic search...'
-);
-```
-
-### Jurisdiction Resolution Flow
-
-```
-User selects or describes target agency
-        |
-        v
-+-------+---------------+
-| Jurisdiction Resolver  |
-+-------+---------------+
-        |
-        +---> Is it a federal agency?  --> jurisdiction = 'federal'
-        |     (match against federal agency list)
-        |
-        +---> Is it a state agency?    --> jurisdiction = 'state:{code}'
-        |     (match state from agency name/address)
-        |
-        +---> Is it a local agency?    --> jurisdiction = 'state:{code}'
-        |     (local agencies follow state law)
-        |
-        +---> Multi-jurisdiction?      --> return both applicable laws
-              (e.g., state university with federal funding)
-        |
-        v
-+-------+---------------+
-| Law Lookup             |
-| foia_laws WHERE        |
-| jurisdiction = ?       |
-+-------+---------------+
-        |
-        v
-  Return: {
-    law_name,         -- "FOIL" / "FOIA" / "CPRA"
-    statute_ref,      -- exact statute citation
-    exemptions,       -- structured exemption list
-    time_limits,      -- deadlines for this jurisdiction
-    appeal_process,   -- who to appeal to and how
-    fee_rules         -- fee schedule and waiver eligibility
-  }
-```
-
-### How Jurisdiction Flows Through Each Phase
-
-```
-PHASE 1 (Discovery)
-  - Filter search results by jurisdiction
-  - Show state-specific portals alongside MuckRock/DocumentCloud
-
-PHASE 2 (Request Intelligence)
-  - Cite correct statute (FOIA vs FOIL vs CPRA)
-  - Apply jurisdiction-specific exemption avoidance
-  - Use correct fee waiver language
-  - Set proper deadline expectations
-
-PHASE 3 (Response & Negotiation)
-  - Track jurisdiction-specific deadlines (20 days federal vs 5+20 NY)
-  - Route appeals to correct body (OGIS vs COOG vs AG vs court)
-  - Validate exemptions against correct law
-  - Generate jurisdiction-appropriate follow-up language
-
-PHASE 4 (Beyond FOIA)
-  - Suggest cross-jurisdiction filing (federal AND state for same records)
-  - Recommend state-specific remedies (e.g., FL criminal penalties)
-
-PHASE 5 (Data Hub)
-  - Compare agency performance WITHIN jurisdiction
-  - Track which state laws produce best outcomes
-  - Identify jurisdictions with weakest/strongest enforcement
-```
-
-### Rollout Strategy
-
-```
-Wave 1 (MVP):     Federal FOIA + New York FOIL
-                   - Two jurisdictions with very different rules
-                   - Validates the multi-jurisdiction architecture works
-
-Wave 2:           + California (CPRA) + Texas (PIA) + Florida (Sunshine)
-                   - High-population states with active FOIA communities
-                   - Covers ~40% of US population
-
-Wave 3:           + 10 more states (IL, PA, OH, GA, NC, MI, NJ, VA, WA, MA)
-                   - Prioritized by population + MuckRock request volume
-
-Wave 4:           All 50 states + DC + territories
-                   - Community-contributed law data with validation
-
-Future:           International (UK FOI Act, Canada ATIA, EU transparency)
-```
-
-### Seeding the Law Database
-
-Sources for structured law data:
-- **Reporters Committee for Freedom of the Press** — maintains state-by-state guides
-- **National Freedom of Information Coalition (NFOIC)** — state FOI resources
-- **MuckRock jurisdiction data** — their API has jurisdiction metadata
-- **State legislature websites** — primary statute text
-
-The initial seed (federal + NY) will be manually curated for accuracy. Later states can be semi-automated: scrape statute text, use Claude to extract structured exemptions/deadlines/appeal processes, then human-verify before adding to production.
+**Communication timeline:**
+- Each incoming/outgoing item stored in `communications` table
+- Direction: `incoming` | `outgoing`
+- Types: `initial_request`, `follow_up`, `response`, `appeal`, `acknowledgment`, `other`
+- Delete confirmation via reusable `ConfirmModal` component
 
 ---
 
-## Phase 1: Document Discovery
+## Phase 4: Import & Backfill (Complete)
 
-**Goal:** Before filing anything, find documents that already exist in the public domain.
+**Goal:** Allow users to bring existing in-flight FOIA requests into the system.
 
-### Architecture
+**Import flow** (`POST /tracking/requests/import`):
+1. User selects agency from constrained dropdown (50+ agencies with backend data)
+2. Resolve agency abbreviation → full `AgencyInfo` from Supabase
+3. Run full research pipeline concurrently (same as new draft flow)
+4. `RequestAnalyzer.analyze_import()` — assesses existing letter against research context
+5. Create `TrackedRequest` with analysis results
+6. Log original letter as outgoing `communication`
+7. If `existing_response` provided, run `ResponseAnalyzer` immediately
 
-```
-User Query: "ICE detention facility inspection reports 2023"
-        |
-        v
-+-------+--------+
-| Search Router   |-----> Parallel queries to:
-+-------+--------+
-        |
-   +----+----+----+----+
-   |         |         |
-   v         v         v
-MuckRock  DocCloud  data.gov     Supabase
-  API       API      API        (cached)
-   |         |         |            |
-   +----+----+----+----+----+------+
-        |
-        v
-+-------+--------+
-| Result Merger   |
-| - Deduplicate   |
-| - Rank by       |
-|   relevance     |
-| - Attach source |
-|   metadata      |
-+-------+--------+
-        |
-        v
-  Return to user with:
-  - Found documents (direct links)
-  - Similar past requests (status, outcomes)
-  - Recommendation: file new request or use existing
-```
+**File processor** (`services/file_processor.py`):
+- Extracts text from DOCX, PDF, TXT, and image files
+- Used during import for uploaded FOIA letters and agency responses
 
-### Key Implementation Details
-
-1. **Parallel API queries** using `asyncio.gather()` to search MuckRock, DocumentCloud, and data.gov simultaneously
-2. **Result deduplication** by normalizing titles and matching on agency + date range + topic
-3. **Relevance ranking** combining text similarity (TF-IDF or embedding cosine similarity) with recency and source authority
-4. **Search caching** in Supabase with TTL (24-hour expiry) to reduce API calls
-5. **Semantic search** using pgvector to find similar past requests in the local database
-
-### API Endpoints
-
-```
-POST /api/v1/search
-  Body: { query, agency?, jurisdiction?, date_range? }
-  Returns: { results: [...], recommendation: "file_new" | "use_existing" }
-
-GET  /api/v1/search/suggestions
-  Query: ?q=partial+query
-  Returns: { suggestions: [...] }
-```
-
----
-
-## Phase 2: Request Intelligence
-
-**Goal:** Generate optimized, legally sound FOIA requests with high success probability.
-
-### Architecture
-
-```
-User describes what they need
-        |
-        v
-+-------+-----------+
-| Agency Identifier  |----> Match to correct agency + jurisdiction
-+-------+-----------+
-        |
-        v
-+-------+-----------+
-| Law Matcher        |----> Pull applicable FOIA statute, exemptions,
-+-------+-----------+       time limits from foia_laws table
-        |
-        v
-+-------+-----------+
-| Similar Request    |----> Semantic search (pgvector) for past requests
-| Finder             |      to same agency on similar topics
-+-------+-----------+
-        |
-        v
-+-------+-----------+
-| Request Drafter    |----> Claude API generates optimized request text
-| (Claude API)       |      using: law, agency profile, similar cases,
-+-------+-----------+       best practice templates
-        |
-        v
-+-------+-----------+
-| Success Predictor  |----> Score based on: agency denial rate,
-+-------+-----------+       exemption overlap, request specificity
-        |
-        v
-  Return: {
-    draft_text,
-    success_score,
-    suggested_modifications,
-    applicable_law,
-    similar_past_requests
-  }
-```
-
-### Request Drafting Prompt Strategy
-
-The Claude API call includes structured context:
-
-```python
-async def draft_request(description: str, agency: Agency, law: FoiaLaw,
-                        similar_requests: list[Request]) -> DraftResult:
-    similar_context = "\n".join([
-        f"- Request to {r.agency.name}: '{r.title}' -> {r.status} "
-        f"(success score: {r.success_score})"
-        for r in similar_requests
-    ])
-
-    prompt = f"""Draft a FOIA request letter with these inputs:
-
-RECORDS NEEDED: {description}
-AGENCY: {agency.name} ({agency.jurisdiction})
-APPLICABLE LAW: {law.law_name} ({law.statute_ref})
-EXEMPTIONS TO AVOID: {json.dumps(law.exemptions)}
-TIME LIMITS: {json.dumps(law.time_limits)}
-AGENCY AVG RESPONSE: {agency.avg_response_days} days
-AGENCY DENIAL RATE: {agency.denial_rate}%
-
-SIMILAR PAST REQUESTS:
-{similar_context}
-
-Generate a request that:
-1. Uses precise, narrow language to reduce grounds for denial
-2. Cites the correct statute and relevant sections
-3. Specifies format preference (electronic, PDF)
-4. Includes fee waiver justification if applicable
-5. Sets reasonable scope to avoid "unduly burdensome" rejections
-"""
-    response = await anthropic_client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return parse_draft_response(response)
-```
-
-### Success Prediction Model
-
-A lightweight scoring model (not ML — rule-based to start):
-
-```
-Score = weighted average of:
-  - Agency historical fulfillment rate (30%)
-  - Request specificity score (25%)       # narrow > broad
-  - Exemption overlap risk (20%)          # does the topic hit known exemptions?
-  - Similar request outcomes (15%)        # how did similar requests fare?
-  - Jurisdiction strength (10%)           # federal FOIA vs weak state laws
-```
-
----
-
-## Phase 3: Response & Negotiation
-
-**Goal:** Track agency responses, detect issues, and guide users through appeals.
-
-### Communication Timeline Tracking
-
-```
-Request Filed (Day 0)
-    |
-    v
-[20 business days — federal FOIA statutory deadline]
-    |
-    +---> No response? --> Generate follow-up letter
-    |                      referencing statute deadline
-    v
-Response Received
-    |
-    +---> Fulfilled       --> Document analysis, summary
-    +---> Partial         --> Identify missing records, draft narrowed follow-up
-    +---> Denied          --> Exemption analysis, appeal recommendation
-    +---> Fee estimate    --> Draft fee waiver or negotiate scope
-    +---> "No records"    --> Suggest alternative agencies or record descriptions
-```
-
-### Redaction Detection
-
-When documents are received as PDFs:
-
-1. **Text layer analysis** — compare visible text to OCR text; discrepancies indicate redactions
-2. **Black rectangle detection** — image processing to identify blacked-out regions
-3. **Exemption validation** — cross-reference cited exemptions with the FOIA law to check if they're properly applied
-4. **Glomar response detection** — identify "neither confirm nor deny" responses
-
-```python
-async def analyze_response(response_text: str, original_request: str,
-                           jurisdiction: str) -> ResponseAnalysis:
-    law = await get_foia_law(jurisdiction)
-
-    analysis = await anthropic_client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2000,
-        messages=[{"role": "user", "content": f"""
-Analyze this FOIA response for issues:
-
-ORIGINAL REQUEST: {original_request}
-AGENCY RESPONSE: {response_text}
-APPLICABLE LAW: {law.law_name}
-VALID EXEMPTIONS: {json.dumps(law.exemptions)}
-
-Identify:
-1. Are cited exemptions properly applied?
-2. Is the response complete relative to the request?
-3. Are there grounds for appeal?
-4. Recommended next steps.
-"""}]
-    )
-    return parse_analysis(analysis)
-```
-
-### Appeal Generation
-
-```
-Denied Response
-    |
-    v
-+---+---+
-| Appeal |
-| Engine |
-+---+---+
-    |
-    +---> Administrative appeal (draft letter to agency head)
-    +---> OGIS mediation referral (federal)
-    +---> State equivalent referral
-    +---> Litigation pathway info (link to legal resources)
-```
-
----
-
-## Phase 4: Beyond FOIA
-
-**Goal:** When FOIA fails or is blocked, surface alternative pathways to the information.
-
-### Alternative Pathways Engine
-
-```python
-ALTERNATIVE_PATHWAYS = {
-    "congressional_inquiry": {
-        "description": "Request through your congressional representative",
-        "when": "Agency is unresponsive or stonewalling",
-        "template": "congressional_inquiry_template.md"
-    },
-    "state_equivalent": {
-        "description": "Use state public records law instead of federal FOIA",
-        "when": "Records may be held at state level",
-        "lookup": "foia_laws table filtered by state"
-    },
-    "inspector_general": {
-        "description": "File complaint with the agency's Inspector General",
-        "when": "Suspected misconduct in records handling",
-        "resources": ["oversight.gov"]
-    },
-    "reading_room": {
-        "description": "Check agency's electronic reading room",
-        "when": "Records may be proactively disclosed",
-        "lookup": "agencies.foia_portal_url"
-    },
-    "journalist_network": {
-        "description": "Connect with journalists who've filed similar requests",
-        "when": "Multiple requesters seeking same records",
-        "source": "MuckRock user data for similar requests"
-    }
-}
-```
-
-### Pathway Recommendation
-
-Given a blocked request, the system scores each alternative pathway based on:
-- Agency type and history
-- Record type requested
-- Jurisdiction
-- Reason for denial/delay
-
----
-
-## Phase 5: Data Hub
-
-**Goal:** Aggregate transparency metrics across all requests to expose patterns and inform future requests.
-
-### Dashboard Metrics
-
-```
-+------------------------------------------------------------------+
-|  FOIA TRANSPARENCY DASHBOARD                                     |
-|                                                                  |
-|  Agency Leaderboard          Response Time Trends                |
-|  +-----------------------+  +-----------------------------+      |
-|  | Agency    | Rate | Avg|  |  Days                       |      |
-|  |-----------|------|----+  |  60|        ___              |      |
-|  | EPA       | 72%  | 28d|  |  40|   ___/   \___          |      |
-|  | DOJ       | 45%  | 89d|  |  20|__/           \___      |      |
-|  | DHS       | 38%  |142d|  |    +--+--+--+--+--+--+--+   |      |
-|  | ICE       | 31%  |186d|  |    J  F  M  A  M  J  J      |      |
-|  +-----------------------+  +-----------------------------+      |
-|                                                                  |
-|  Top Exemptions Used         Your Requests                       |
-|  +-----------------------+  +-----------------------------+      |
-|  | (b)(6) Privacy  42%   |  | 3 fulfilled                 |      |
-|  | (b)(7) Law Enf  28%   |  | 1 pending (day 34 of 20)    |      |
-|  | (b)(5) Deliber  18%   |  | 1 denied -> appeal drafted  |      |
-|  +-----------------------+  +-----------------------------+      |
-+------------------------------------------------------------------+
-```
-
-### Data Pipeline
-
-```
-Incoming data sources:
-  - User request outcomes (direct)
-  - MuckRock bulk data (periodic sync)
-  - Agency annual FOIA reports (manual + scraping)
-        |
-        v
-+-------+--------+
-| ETL Pipeline    |
-| (scheduled job) |
-+-------+--------+
-        |
-        v
-agency_metrics table
-        |
-        v
-+-------+--------+
-| Analytics API   |
-+-------+--------+
-        |
-        v
-Dashboard (Next.js + chart library)
-```
-
-### API Endpoints
-
-```
-GET /api/v1/analytics/agencies
-  Query: ?jurisdiction=federal&sort=denial_rate
-  Returns: ranked agency list with metrics
-
-GET /api/v1/analytics/agencies/{id}/trends
-  Returns: monthly metrics over time
-
-GET /api/v1/analytics/exemptions
-  Query: ?agency_id=...
-  Returns: exemption usage breakdown
-
-GET /api/v1/analytics/user/summary
-  Returns: current user's request outcomes
-```
+**`cfr_available` flag:**
+- Set on `AgencyInfo` when building from profile: `cfr_available=bool(profile.get("cfr_text", ""))`
+- NSA, ARMY, USAF return `cfr_available=False` (eCFR has no published part for these)
+- Frontend shows amber notice explaining the gap and a mailto link to report it
 
 ---
 
 ## Deployment Strategy
 
-### Environment Setup
+### Services
 
-```
-Development:
-  - Local FastAPI server (uvicorn)
-  - Supabase cloud project (free tier) — shared dev DB
-  - Next.js dev server
-  - .env file for API keys
+| Service | Purpose | Config |
+|---------|---------|--------|
+| Supabase | PostgreSQL + Auth + RLS | `supabase_schema.sql` |
+| Railway | FastAPI backend | `backend/railway.toml`, `backend/Procfile` |
+| Vercel | Next.js frontend | Root directory `frontend/` |
 
-Staging:
-  - Railway (FastAPI) + Vercel (Next.js) + Supabase
-  - GitHub Actions deploys on push to `staging` branch
+### Railway
 
-Production:
-  - Same stack, separate Supabase project
-  - GitHub Actions deploys on push to `main`
-```
-
-### Project Structure
-
-```
-foia-fluent/
-├── backend/
-│   ├── app/
-│   │   ├── main.py                 # FastAPI app entry point
-│   │   ├── config.py               # Settings (env vars)
-│   │   ├── models/                 # Pydantic models
-│   │   │   ├── request.py
-│   │   │   ├── agency.py
-│   │   │   ├── communication.py
-│   │   │   └── document.py
-│   │   ├── services/               # Business logic
-│   │   │   ├── muckrock.py         # MuckRock API client
-│   │   │   ├── documentcloud.py    # DocumentCloud API client
-│   │   │   ├── datagov.py          # data.gov API client
-│   │   │   ├── search.py           # Unified search orchestrator
-│   │   │   ├── drafter.py          # Request drafting (Claude API)
-│   │   │   ├── analyzer.py         # Response analysis
-│   │   │   └── predictor.py        # Success prediction
-│   │   ├── mcp/                    # MCP protocol implementation
-│   │   │   ├── server.py           # MCP server setup
-│   │   │   ├── tools.py            # Tool definitions
-│   │   │   └── resources.py        # Resource definitions
-│   │   ├── routes/                 # API endpoints
-│   │   │   ├── search.py
-│   │   │   ├── requests.py
-│   │   │   ├── analytics.py
-│   │   │   └── auth.py
-│   │   └── db/
-│   │       ├── supabase.py         # Supabase client
-│   │       └── migrations/         # SQL migration files
-│   ├── tests/
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── app/                    # Next.js app router
-│   │   ├── components/
-│   │   └── lib/
-│   ├── package.json
-│   └── next.config.js
-├── docs/
-│   └── implementation_strategy.md
-├── README.md
-└── .github/
-    └── workflows/
-        ├── backend.yml
-        └── frontend.yml
+```toml
+# backend/railway.toml
+[build]
+builder = "nixpacks"
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
 ```
 
-### Cost Estimate (Monthly)
+Set root directory to `backend/` in Railway service settings.
 
-| Service | Tier | Cost |
-|---------|------|------|
-| Supabase | Free | $0 |
-| Railway | Hobby ($5 credit) | $0-5 |
-| Vercel | Free | $0 |
-| Claude API | Pay-as-you-go | ~$5-20 (depends on usage) |
-| GitHub | Free | $0 |
-| **Total** | | **$5-25/month** |
+Required env vars: `ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_JWT_SECRET`, `BACKEND_CORS_ORIGINS`, `MUCKROCK_BASE_URL`
+
+### Vercel
+
+Set root directory to `frontend/` in Vercel project settings.
+
+Required env vars: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+### One-time setup
+
+```bash
+# 1. Run schema in Supabase SQL Editor
+# (paste contents of backend/supabase_schema.sql)
+
+# 2. Seed agency profiles (run locally with Supabase credentials)
+cd backend
+python -m app.scripts.seed_agency_profiles
+# Takes ~2 min, fetches verbatim CFR text from eCFR for all 52 agencies
+
+# 3. Set Supabase auth redirect URL
+# Authentication → URL Configuration → add https://your-app.vercel.app/auth/callback
+```
+
+### CORS wiring
+
+After Vercel deploy, update Railway env:
+```
+BACKEND_CORS_ORIGINS=["https://your-app.vercel.app","http://localhost:3000"]
+```
 
 ---
 
-## Development Roadmap
+## Phase 6: FOIA Transparency Data Hub (Complete)
 
-### Milestone 1: Foundation
+**Goal:** Public-facing transparency dashboard surfacing aggregated FOIA data across ~1,600 federal agencies. No authentication required.
 
-- [ ] Set up monorepo structure (backend + frontend)
-- [ ] FastAPI skeleton with health check, config, CORS
-- [ ] Supabase project + initial schema migration
-- [ ] MuckRock API client with search endpoint
-- [ ] Basic Next.js frontend with search input and results display
-- [ ] Deploy to Railway + Vercel
+**Architecture:**
+```
+/hub (public, no auth)
+├── Global dashboard — overall stats, leaderboards, charts
+└── /hub/[slug] — per-agency deep-dive
 
-**Deliverable:** User can search MuckRock for existing FOIA requests from the web UI.
+Backend
+├── GET /api/v1/hub/stats        — global summary metrics
+├── GET /api/v1/hub/agencies     — paginated/filterable agency list
+└── GET /api/v1/hub/agencies/{slug} — single agency detail
 
-### Milestone 2: Multi-Source Discovery
+Supabase
+└── agency_stats_cache           — MuckRock stats, refreshed weekly
+```
 
-- [ ] DocumentCloud API integration
-- [ ] data.gov API integration
-- [ ] Parallel search orchestrator
-- [ ] Result deduplication and ranking
-- [ ] Search caching in Supabase
-- [ ] Semantic search setup (pgvector + embeddings)
+**Transparency Score** (0–100): weighted composite
+- Success rate: 40%
+- Response speed (inverse of avg days / 60, capped): 30%
+- Fee rate (inverse): 15%
+- Portal availability: 15%
 
-**Deliverable:** Unified search across all three sources with ranked, deduplicated results.
+**Data pipeline:**
+1. `python -m app.scripts.refresh_hub_stats` — fetches all agencies from MuckRock's paginated `/agency/` API, upserts into `agency_stats_cache`
+2. Backend computes transparency score at upsert time, stores in cache
+3. Frontend reads from cache via hub API; no live MuckRock calls on page load
 
-### Milestone 3: Request Intelligence + State Law Engine
+**Key files:**
+- `backend/app/services/hub.py` — HubService with global stats aggregation and agency pagination
+- `backend/app/routes/hub.py` — public endpoints (no `Depends(get_current_user)`)
+- `backend/app/models/hub.py` — GlobalStats, AgencyStats, AgencyDetail Pydantic models
+- `backend/app/scripts/refresh_hub_stats.py` — standalone refresh script
+- `frontend/src/app/hub/page.tsx` — global dashboard with recharts visualizations
+- `frontend/src/app/hub/[slug]/page.tsx` — per-agency deep-dive
+- `frontend/src/lib/hub-api.ts` — typed API client
 
-- [ ] State Law Engine: seed federal FOIA + New York FOIL (structured law data)
-- [ ] Jurisdiction resolver (map agency -> correct law)
-- [ ] Agency database (seed top 50 federal agencies + NY state agencies)
-- [ ] Claude API integration for request drafting with jurisdiction-aware prompts
-- [ ] Success prediction scoring (jurisdiction strength as a factor)
-- [ ] Similar request finder (semantic search)
-- [ ] Request drafting UI (form + preview, shows applicable law)
+**Homepage:** Root `/` redirects to `/hub`. Search & Draft moved to `/draft`.
 
-**Deliverable:** User describes what they need, gets a jurisdiction-aware FOIA/FOIL request draft with correct statute citations and success prediction.
+---
 
-### Milestone 4: Response Tracking
+## Future Phases
 
-- [ ] Request submission tracking (manual entry + MuckRock sync)
-- [ ] Communication timeline UI
-- [ ] Response analysis (Claude API)
-- [ ] Appeal letter generation
-- [ ] Deadline tracking with notifications
-- [ ] Follow-up letter generation
+### Phase 5: Beyond FOIA
 
-**Deliverable:** Full request lifecycle management from draft to resolution.
-
-### Milestone 5: Beyond FOIA + Data Hub
-
-- [ ] Alternative pathway recommendations
-- [ ] Agency analytics dashboard
-- [ ] Exemption pattern analysis
-- [ ] Bulk MuckRock data sync for metrics
-- [ ] User request history and outcomes
-- [ ] Public transparency leaderboard
-
-**Deliverable:** Complete platform with analytics and alternative pathways.
-
-### Milestone 6: State Expansion
-
-- [ ] Add California (CPRA), Texas (PIA), Florida (Sunshine Law)
-- [ ] Semi-automated law seeding pipeline (scrape + Claude extraction + human review)
-- [ ] State-specific agency databases for CA, TX, FL
-- [ ] Jurisdiction comparison in Data Hub (which states are most/least transparent)
-- [ ] Cross-jurisdiction filing suggestions (file federal AND state simultaneously)
-
-**Deliverable:** Platform covers ~40% of US population across 5 jurisdictions.
-
-### Milestone 7: MCP + Polish
-
-- [ ] MCP server implementation (tool + resource definitions)
-- [ ] MCP client testing with Claude Desktop
-- [ ] Authentication and user management (Supabase Auth)
-- [ ] Rate limiting and error handling
-- [ ] Documentation and onboarding flow
-
-**Deliverable:** Production-ready MVP with MCP support.
+Alternative pathways when FOIA fails:
+- Congressional inquiry templates
+- Inspector General complaint generator
+- State public records law engine (FOIL, CPRA, PIA, Sunshine Law)
