@@ -2,7 +2,7 @@
 
 ### A civic AI platform that cuts through government opacity — finding existing public records, drafting optimized requests under federal and state transparency laws, and tracking agency responses so documents reach the people who need them.
 
-Built by [NYC-DSSG](https://www.nyc-dssg.org/) (Data Science for Social Good).
+**[Live Site](https://foia-fluent.vercel.app)** · Built by [NYC-DSSG](https://www.nyc-dssg.org/) (Data Science for Social Good).
 
 ![Data Hub](docs/images/data-hub.png)
 
