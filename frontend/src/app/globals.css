@@ -3387,6 +3387,17 @@ h1, h2, h3 {
   font-size: 0.8rem !important;
 }
 
+.footer-link {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+
+.footer-link:hover {
+  color: var(--primary);
+}
+
 .footer-copy-btn {
   background: none;
   border: 1px solid var(--border);
