@@ -14,7 +14,7 @@ export default function Footer() {
     <footer className="site-footer">
       <div className="footer-inner">
         <p>Built for the public with ❤️ in New York City 🗽</p>
-        <p>FOIA Fluent is open source. GitHub coming soon.</p>
+        <p>FOIA Fluent is open source. <a href="https://github.com/dssg-nyc/FOIA-Fluent" target="_blank" rel="noopener noreferrer" className="footer-link">View on GitHub</a></p>
         <p>
           Have feedback or want to contribute?{" "}
           <button className="footer-copy-btn" onClick={copyEmail}>
