@@ -61,6 +61,51 @@ CREATE INDEX IF NOT EXISTS idx_agency_stats_score
 CREATE INDEX IF NOT EXISTS idx_agency_stats_slug
     ON agency_stats_cache (slug);
 
+-- ── Jurisdiction Cache ────────────────────────────────────────────────────────
+-- MuckRock jurisdiction metadata for states (and optionally local).
+-- Refreshed weekly by refresh_jurisdiction_stats.py.
+-- No RLS: public reference data for the Data Hub.
+
+CREATE TABLE IF NOT EXISTS jurisdiction_cache (
+    id              BIGINT PRIMARY KEY,   -- MuckRock jurisdiction ID
+    name            TEXT NOT NULL,
+    slug            TEXT NOT NULL,
+    abbrev          TEXT DEFAULT '',       -- "CA", "NY" (derived)
+    level           TEXT NOT NULL DEFAULT 'state',  -- 'state' | 'local'
+    parent_id       BIGINT,
+    absolute_url    TEXT DEFAULT '',
+    refreshed_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_jurisdiction_slug ON jurisdiction_cache (slug);
+CREATE INDEX IF NOT EXISTS idx_jurisdiction_level ON jurisdiction_cache (level);
+CREATE INDEX IF NOT EXISTS idx_jurisdiction_parent ON jurisdiction_cache (parent_id);
+
+-- ── Jurisdiction Stats Cache ─────────────────────────────────────────────────
+-- Aggregated transparency stats per jurisdiction, computed from agencies.
+-- No RLS: public reference data.
+
+CREATE TABLE IF NOT EXISTS jurisdiction_stats_cache (
+    jurisdiction_id         BIGINT PRIMARY KEY REFERENCES jurisdiction_cache(id),
+    total_agencies          INT DEFAULT 0,
+    total_requests          INT DEFAULT 0,
+    total_completed         INT DEFAULT 0,
+    total_rejected          INT DEFAULT 0,
+    overall_success_rate    FLOAT DEFAULT 0,
+    average_response_time   FLOAT DEFAULT 0,
+    median_response_time    FLOAT DEFAULT 0,
+    fee_rate                FLOAT DEFAULT 0,
+    portal_coverage_pct     FLOAT DEFAULT 0,
+    transparency_score      FLOAT DEFAULT 0,
+    top_agency_id           BIGINT,
+    top_agency_name         TEXT DEFAULT '',
+    refreshed_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Migration: add jurisdiction_id to agency_stats_cache for state/local agencies
+-- ALTER TABLE agency_stats_cache ADD COLUMN IF NOT EXISTS jurisdiction_id BIGINT;
+-- CREATE INDEX IF NOT EXISTS idx_agency_stats_jurisdiction ON agency_stats_cache (jurisdiction_id);
+
 -- ── Agency Intel Cache ─────────────────────────────────────────────────────────
 -- Dynamic MuckRock outcome data, shared across users, refreshed with 24hr TTL.
 -- No RLS: shared reference data.

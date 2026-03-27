@@ -256,11 +256,14 @@ export default function DataHubPage() {
           )}
           <div className="hub-header-cta">
             <Link href="/draft" className="hub-cta-primary">
-              Draft a FOIA Request →
+              Draft a FOIA Request
             </Link>
             <a href="#agency-directory" className="hub-cta-secondary">
-              Browse Agencies ↓
+              Browse Agencies
             </a>
+            <Link href="/hub/states" className="hub-cta-secondary">
+              State & Local Data
+            </Link>
           </div>
         </div>
 

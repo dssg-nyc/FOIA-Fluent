@@ -1,21 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { trackRequest } from "@/lib/tracking-api";
 
-/**
- * Handles the Supabase magic link redirect.
- * Supabase redirects here after the user clicks the sign-in link in their email.
- * The URL contains the auth tokens in the fragment (#access_token=...).
- * Supabase JS SDK exchanges these automatically; we just wait and redirect.
- *
- * If localStorage has a pending_track_request (saved before login), we submit
- * it after sign-in and redirect to the new request's detail page.
- */
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const [error, setError] = useState("");
 
   async function handlePostSignIn() {
     const pending = localStorage.getItem("pending_track_request");
@@ -34,6 +26,16 @@ export default function AuthCallbackPage() {
   }
 
   useEffect(() => {
+    const hash = window.location.hash;
+    if (hash.includes("error=")) {
+      const params = new URLSearchParams(hash.replace("#", ""));
+      const errorDesc = params.get("error_description");
+      if (errorDesc) {
+        setError(errorDesc.replace(/\+/g, " "));
+        return;
+      }
+    }
+
     if (!supabase) {
       handlePostSignIn();
       return;
@@ -56,6 +58,20 @@ export default function AuthCallbackPage() {
     return () => subscription.unsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
+
+  if (error) {
+    return (
+      <main className="login-page">
+        <div className="login-card">
+          <h1>Sign-in link expired</h1>
+          <p>Your sign-in link is no longer valid. This can happen if you requested multiple links — only the most recent one works.</p>
+          <a href="/login" className="btn btn-primary" style={{ marginTop: "1rem", display: "inline-block", textDecoration: "none" }}>
+            Request a new link
+          </a>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="login-page">

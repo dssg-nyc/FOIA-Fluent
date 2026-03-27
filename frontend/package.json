@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.78.0",
+    "@vercel/analytics": "^2.0.1",
     "next": "14.2.29",
     "react": "^18",
     "react-dom": "^18",
+    "react-simple-maps": "^3.0.0",
     "recharts": "^3.8.0"
   },
   "devDependencies": {

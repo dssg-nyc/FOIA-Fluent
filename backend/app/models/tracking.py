@@ -137,6 +137,12 @@ class ImportRequestPayload(BaseModel):
 
 # ── Response shapes ────────────────────────────────────────────────────────────
 
+class TrackedRequestSummary(BaseModel):
+    """Lightweight summary for the dashboard list view."""
+    request: TrackedRequest
+    deadline: Optional[DeadlineInfo] = None
+
+
 class TrackedRequestDetail(BaseModel):
     """Full request with communications and deadline info."""
     request: TrackedRequest

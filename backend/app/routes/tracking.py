@@ -18,6 +18,7 @@ from app.models.tracking import (
     ResponseAnalysis,
     TrackedRequest,
     TrackedRequestDetail,
+    TrackedRequestSummary,
     TrackRequestPayload,
     UpdateRequestPayload,
 )
@@ -163,11 +164,15 @@ async def create_request(
     return _build_detail(req, user_id)
 
 
-@router.get("/tracking/requests", response_model=list[TrackedRequestDetail])
+@router.get("/tracking/requests", response_model=list[TrackedRequestSummary])
 async def list_requests(user_id: str = Depends(get_current_user_id)):
     """List all tracked requests for the current user with deadline info."""
     requests = _list_requests(user_id)
-    return [_build_detail(r, user_id) for r in requests]
+    summaries = []
+    for r in requests:
+        deadline = get_deadline_info(r)
+        summaries.append(TrackedRequestSummary(request=r, deadline=deadline))
+    return summaries
 
 
 @router.get("/tracking/requests/{request_id}", response_model=TrackedRequestDetail)
