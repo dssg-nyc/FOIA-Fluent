@@ -3412,3 +3412,226 @@ h1, h2, h3 {
 .footer-copy-btn:hover {
   background: var(--primary-light);
 }
+
+/* ── States Map ── */
+.states-map-container {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow: hidden;
+  margin-bottom: 2rem;
+}
+
+.states-tooltip {
+  position: fixed;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  min-width: 180px;
+}
+
+.states-tooltip-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--foreground);
+  margin-bottom: 0.25rem;
+}
+
+.states-tooltip-score {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+
+.states-tooltip-row {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.states-legend {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.states-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.states-legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+/* Hub tab navigation */
+.hub-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 2rem;
+}
+
+.hub-tab {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.hub-tab:hover {
+  color: var(--foreground);
+}
+
+.hub-tab-active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+/* State detail score section */
+.state-detail-score-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.state-detail-score-gauge {
+  text-align: center;
+  padding: 1.5rem 2.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.state-detail-score-value {
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.state-detail-score-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.state-detail-score-bar {
+  width: 200px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  margin: 0.75rem auto 0;
+  overflow: hidden;
+}
+
+.state-detail-score-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.state-detail-percentile {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.5rem;
+}
+
+/* Mobile: hide map, show card list */
+.states-mobile-list {
+  display: none;
+}
+
+.states-mobile-card {
+  display: block;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.5rem;
+  text-decoration: none;
+  color: var(--foreground);
+  transition: background 0.15s;
+}
+
+.states-mobile-card:hover {
+  background: var(--primary-light);
+}
+
+.states-mobile-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.states-mobile-rank {
+  color: var(--muted);
+  font-size: 0.8rem;
+  min-width: 2rem;
+}
+
+.states-mobile-abbrev {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.states-mobile-card-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.hub-back-link {
+  font-size: 0.875rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.hub-back-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .states-map-container {
+    display: none;
+  }
+  .states-legend {
+    display: none;
+  }
+  /* Hide the desktop rankings section title + table on mobile */
+  .hub-directory {
+    display: none;
+  }
+  .states-mobile-list {
+    display: block;
+  }
+  .hub-charts-row {
+    flex-direction: column;
+  }
+  .state-detail-score-value {
+    font-size: 2.5rem;
+  }
+  .hub-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
