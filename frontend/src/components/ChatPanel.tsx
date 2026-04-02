@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
-import { streamChat, ChatMessage, ChatContext, ChatEvent } from "@/lib/chat-api";
+import { streamChat, ChatMessage, ChatContext } from "@/lib/chat-api";
 import { getAccessToken } from "@/lib/supabase";
 
 interface DisplayMessage {
@@ -26,7 +26,12 @@ function getPageContext(pathname: string): ChatContext {
 
 export default function ChatPanel() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth > 768;
+    }
+    return true;
+  });
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -216,6 +221,9 @@ export default function ChatPanel() {
           </svg>
         </button>
       )}
+
+      {/* Mobile backdrop — tap to close */}
+      {open && <div className="chat-backdrop" onClick={() => setOpen(false)} />}
 
       {/* Open panel */}
       {open && (
