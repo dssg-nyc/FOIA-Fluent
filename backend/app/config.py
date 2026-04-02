@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""  # Settings → API → JWT Secret (for HS256 token verification)
     # Admin endpoint protection
     admin_secret: str = ""
+    # FOIA.gov API
+    foia_gov_api_key: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

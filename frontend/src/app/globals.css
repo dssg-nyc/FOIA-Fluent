@@ -2624,61 +2624,87 @@ h1, h2, h3 {
 .hub-stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-  margin-bottom: 2rem;
+  gap: 1.25rem;
+  margin-bottom: 1.75rem;
 }
 
 .hub-stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.25rem 1rem;
+  padding: 1.5rem 1.25rem;
   text-align: center;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.hub-stat-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: #d1d5db;
 }
 
 .hub-stat-value {
   font-size: 2rem;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.1;
   color: var(--foreground);
 }
 
 .hub-stat-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--muted);
-  margin-top: 0.4rem;
+  margin-top: 0.5rem;
 }
 
 .hub-stat-sub {
   font-size: 0.75rem;
   color: var(--muted);
-  margin-top: 0.2rem;
+  margin-top: 0.25rem;
+  opacity: 0.8;
 }
 
 /* ── Charts Row ── */
 .hub-charts-row {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 1rem;
-  margin-bottom: 2rem;
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 1.75rem;
 }
 
 .hub-chart-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.25rem;
+  padding: 1.5rem;
+  margin-bottom: 1.75rem;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.hub-chart-card:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: #d1d5db;
+}
+
+/* When chart-card is inside charts-row, share space equally */
+.hub-charts-row > .hub-chart-card {
+  margin-bottom: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Wide variant takes 2x space in a row */
+.hub-charts-row > .hub-chart-card-wide {
+  flex: 2;
 }
 
 .hub-chart-title {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
   color: var(--foreground);
   margin-bottom: 1rem;
+  letter-spacing: -0.01em;
 }
 
 .hub-chart-legend {
@@ -3413,6 +3439,104 @@ h1, h2, h3 {
   background: var(--primary-light);
 }
 
+/* ── Insights Digest ── */
+.insights-digest {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+.insights-digest-category {
+  margin-bottom: 2rem;
+}
+
+.insights-digest-category-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--foreground);
+  border-left: 4px solid var(--primary);
+  padding-left: 0.75rem;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.insights-digest-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--border);
+  border-radius: 10px;
+  padding: 0.1rem 0.5rem;
+  margin-left: 0.25rem;
+}
+
+.insights-digest-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.insights-digest-item {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  text-decoration: none;
+  color: var(--foreground);
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.15s;
+}
+
+.insights-digest-item:hover {
+  box-shadow: var(--shadow-md);
+  border-color: #d1d5db;
+  transform: translateY(-2px);
+}
+
+.insights-digest-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.insights-digest-source {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.insights-digest-date {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.insights-digest-item-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-bottom: 0.4rem;
+  line-height: 1.35;
+}
+
+.insights-digest-item-summary {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 0;
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .insights-digest-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── States Map ── */
 .states-map-container {
   position: relative;
@@ -3481,30 +3605,34 @@ h1, h2, h3 {
 /* Hub tab navigation */
 .hub-tabs {
   display: flex;
-  gap: 0;
+  gap: 0.25rem;
   border-bottom: 2px solid var(--border);
   margin-bottom: 2rem;
 }
 
 .hub-tab {
-  padding: 0.75rem 1.5rem;
-  font-size: 0.95rem;
-  font-weight: 500;
+  padding: 0.7rem 1.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
   color: var(--muted);
   text-decoration: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: 2.5px solid transparent;
   margin-bottom: -2px;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  border-radius: 6px 6px 0 0;
+  letter-spacing: -0.01em;
 }
 
 .hub-tab:hover {
   color: var(--foreground);
+  background: var(--primary-light);
 }
 
 .hub-tab-active {
   color: var(--primary);
   border-bottom-color: var(--primary);
-  font-weight: 600;
+  font-weight: 700;
+  background: var(--primary-light);
 }
 
 /* State detail score section */

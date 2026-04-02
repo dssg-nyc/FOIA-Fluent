@@ -209,6 +209,13 @@ export default function DataHubPage() {
     <main>
       <div className="hub-container">
 
+        {/* ── Tabs ── */}
+        <div className="hub-tabs">
+          <Link href="/hub" className="hub-tab">Federal</Link>
+          <Link href="/hub/states" className="hub-tab hub-tab-active">State & Local</Link>
+          <Link href="/hub/insights" className="hub-tab">Insights</Link>
+        </div>
+
         {/* ── Header ── */}
         <div className="header">
           <h1>FOIA Transparency Hub</h1>
@@ -229,9 +236,6 @@ export default function DataHubPage() {
             <a href="#state-directory" className="hub-cta-secondary">
               Browse Agencies
             </a>
-            <Link href="/hub" className="hub-cta-secondary">
-              Federal Agency Data
-            </Link>
           </div>
         </div>
 
@@ -507,67 +511,6 @@ export default function DataHubPage() {
                 )}
               </tbody>
             </table>
-          </div>
-        </section>
-
-        {/* ── Resources ── */}
-        <section className="hub-resources">
-          <h2 className="hub-resources-title">FOIA Resources</h2>
-          <p className="hub-resources-subtitle">Guides, tools, and references for filing effective FOIA requests.</p>
-          <div className="hub-resources-grid">
-            {[
-              {
-                title: "DOJ Guide to the Freedom of Information Act",
-                source: "DOJ",
-                description: "The official comprehensive guide covering FOIA exemptions, procedures, and agency obligations.",
-                url: "https://www.justice.gov/oip/doj-guide-freedom-information-act-0",
-              },
-              {
-                title: "Reporters Committee FOIA Wiki",
-                source: "RCFP",
-                description: "Detailed state and federal FOIA law summaries, appeal procedures, and requester rights.",
-                url: "https://www.rcfp.org/open-government-guide/",
-              },
-              {
-                title: "MuckRock — How to File a FOIA Request",
-                source: "MuckRock",
-                description: "Step-by-step guide for filing requests, tracking responses, and appealing denials.",
-                url: "https://www.muckrock.com/about/muckrock-101/",
-              },
-              {
-                title: "FOIA.gov — National FOIA Portal",
-                source: "GSA",
-                description: "Submit requests to any federal agency and track status through the official government portal.",
-                url: "https://www.foia.gov/",
-              },
-              {
-                title: "OMB Fee Guidelines for FOIA",
-                source: "OMB",
-                description: "Official guidance on fee categories, fee waivers, and how agencies must calculate FOIA fees.",
-                url: "https://www.justice.gov/oip/foia-resources#s5",
-              },
-              {
-                title: "EFF FOIA Litigation Guide",
-                source: "EFF",
-                description: "When and how to sue an agency for FOIA non-compliance, written for non-lawyers.",
-                url: "https://www.eff.org/issues/transparency",
-              },
-            ].map((r) => (
-              <a
-                key={r.title}
-                href={r.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hub-resource-card"
-              >
-                <div className="hub-resource-header">
-                  <span className="hub-resource-source">{r.source}</span>
-                  <span className="hub-resource-arrow">↗</span>
-                </div>
-                <div className="hub-resource-title">{r.title}</div>
-                <p className="hub-resource-desc">{r.description}</p>
-              </a>
-            ))}
           </div>
         </section>
 

@@ -85,8 +85,9 @@ export async function fetchAgencies(params: {
   return res.json();
 }
 
-export async function fetchAgencyDetail(slug: string): Promise<AgencyDetail> {
-  const res = await fetch(`${API_URL}/api/v1/hub/agencies/${slug}`, { cache: "no-store" });
+export async function fetchAgencyDetail(slug: string, jurisdiction?: string): Promise<AgencyDetail> {
+  const q = jurisdiction ? `?jurisdiction=${encodeURIComponent(jurisdiction)}` : "";
+  const res = await fetch(`${API_URL}/api/v1/hub/agencies/${slug}${q}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Hub agency error: ${res.status}`);
   return res.json();
 }

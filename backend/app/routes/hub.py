@@ -45,9 +45,9 @@ def list_agencies(
 
 
 @router.get("/agencies/{slug}", response_model=AgencyDetail)
-def get_agency_detail(slug: str):
+def get_agency_detail(slug: str, jurisdiction: Optional[str] = Query(None, description="Filter by jurisdiction name")):
     """Per-agency transparency detail with request patterns."""
-    detail = hub_service.get_agency_detail(slug)
+    detail = hub_service.get_agency_detail(slug, jurisdiction=jurisdiction)
     if not detail:
         raise HTTPException(status_code=404, detail=f"Agency '{slug}' not found in hub cache")
     return detail
