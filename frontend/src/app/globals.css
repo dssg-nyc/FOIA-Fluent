@@ -3842,17 +3842,67 @@ h1, h2, h3 {
   cursor: default;
 }
 
+/* Chat mobile backdrop */
+.chat-backdrop {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .chat-panel {
-    width: calc(100vw - 1rem);
-    height: calc(100vh - 5rem);
-    bottom: 0.5rem;
-    right: 0.5rem;
-    border-radius: 12px;
+    width: 100vw;
+    height: 75vh;
+    bottom: 0;
+    right: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.2);
+    animation: chatSlideUp 0.25s ease-out;
   }
+
+  @keyframes chatSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
   .chat-bubble {
     bottom: 1rem;
     right: 1rem;
+    width: 50px;
+    height: 50px;
+  }
+
+  .chat-header {
+    padding: 0.85rem 1rem 0.6rem;
+    position: relative;
+  }
+
+  .chat-header::before {
+    content: "";
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+  }
+
+  .chat-header-btn {
+    padding: 0.5rem;
+  }
+
+  .chat-header-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .chat-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: rgba(0,0,0,0.3);
+    animation: chatFadeIn 0.2s ease;
   }
 }
 
