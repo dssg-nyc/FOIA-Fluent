@@ -16,7 +16,8 @@ def compute_transparency_score(
       15% — electronic portal availability
     """
     success_component = (success_rate or 0) / 100 * 40
-    rt_normalized = max(0.0, 1.0 - min((avg_response_time or 60) / 120.0, 1.0))
+    # Clamp negative response times to 0 (MuckRock data quirk)
+    rt_normalized = max(0.0, 1.0 - min((max(avg_response_time or 0, 0) or 60) / 120.0, 1.0))
     speed_component = rt_normalized * 30
     fee_component = (1.0 - min((fee_rate or 0) / 100, 1.0)) * 15
     portal_component = 15.0 if has_portal else 0.0

@@ -109,19 +109,27 @@ function PatternCard({
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
-export default function AgencyDetailPage() {
-  const { slug } = useParams() as { slug: string };
+// State name from slug (e.g. "california" → "California")
+function stateNameFromSlug(slug: string): string {
+  return slug.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+export default function StateAgencyDetailPage() {
+  const params = useParams() as { slug: string; agency: string };
+  const stateSlug = params.slug;
+  const agencySlug = params.agency;
+  const jurisdiction = stateNameFromSlug(stateSlug);
   const [detail, setDetail] = useState<AgencyDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!slug) return;
-    fetchAgencyDetail(slug)
+    if (!agencySlug) return;
+    fetchAgencyDetail(agencySlug, jurisdiction)
       .then(setDetail)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [agencySlug, jurisdiction]);
 
   if (loading) {
     return (
@@ -144,7 +152,7 @@ export default function AgencyDetailPage() {
             <p>Agency not found in the transparency hub cache.</p>
             {error && <p className="hub-error-detail">{error}</p>}
             <Link href="/hub" className="hub-back-link">
-              ← Back to Data Hub
+              ← Back to {jurisdiction}
             </Link>
           </div>
         </div>
@@ -200,8 +208,8 @@ export default function AgencyDetailPage() {
       <div className="hub-container">
 
         {/* Back */}
-        <Link href="/hub" className="hub-back-link">
-          ← Transparency Hub
+        <Link href={`/hub/states/${stateSlug}`} className="hub-back-link">
+          ← Back to {jurisdiction}
         </Link>
 
         {/* ── Header ── */}

@@ -40,7 +40,7 @@ function pct(n: number, decimals = 1): string {
 }
 
 function days(n: number): string {
-  if (!n) return "—";
+  if (!n || n < 0) return "—";
   return `${Math.round(n)} days`;
 }
 
@@ -326,7 +326,7 @@ export default function StateDetailPage() {
                     <tr key={a.id}>
                       <td className="hub-td hub-td-rank">{i + 1}</td>
                       <td className="hub-td hub-td-name">
-                        <Link href={`/hub/${a.slug}`} className="hub-agency-link">{a.name}</Link>
+                        <Link href={`/hub/states/${slug}/${a.slug}`} className="hub-agency-link">{a.name}</Link>
                       </td>
                       <td className="hub-td hub-td-score"><ScoreBadge score={a.transparency_score} /></td>
                       <td className="hub-td hub-td-num" style={{ color: scoreColor(a.success_rate) }}>{pct(a.success_rate)}</td>
@@ -353,7 +353,7 @@ export default function StateDetailPage() {
                     <tr key={a.id}>
                       <td className="hub-td hub-td-rank">{i + 1}</td>
                       <td className="hub-td hub-td-name">
-                        <Link href={`/hub/${a.slug}`} className="hub-agency-link">{a.name}</Link>
+                        <Link href={`/hub/states/${slug}/${a.slug}`} className="hub-agency-link">{a.name}</Link>
                       </td>
                       <td className="hub-td hub-td-score"><ScoreBadge score={a.transparency_score} /></td>
                       <td className="hub-td hub-td-num" style={{ color: scoreColor(a.success_rate) }}>{pct(a.success_rate)}</td>
@@ -414,7 +414,7 @@ export default function StateDetailPage() {
                   </thead>
                   <tbody>
                     {agencies?.agencies.map((a) => (
-                      <tr key={a.id} className="hub-table-row-clickable" onClick={() => router.push(`/hub/${a.slug}`)}>
+                      <tr key={a.id} className="hub-table-row-clickable" onClick={() => router.push(`/hub/states/${slug}/${a.slug}`)}>
                         <td className="hub-td hub-td-name"><strong>{a.name}</strong></td>
                         <td className="hub-td hub-td-num">{a.number_requests.toLocaleString()}</td>
                         <td className="hub-td hub-td-num" style={{ color: scoreColor(a.success_rate) }}>{pct(a.success_rate)}</td>

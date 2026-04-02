@@ -183,21 +183,22 @@ def get_agencies(
         return AgencyPageResponse(agencies=[], total=0, page=page, page_size=page_size)
 
 
-def get_agency_detail(slug: str) -> Optional[AgencyDetail]:
+def get_agency_detail(slug: str, jurisdiction: Optional[str] = None) -> Optional[AgencyDetail]:
     """Return detailed stats for a single agency, including exemption patterns."""
     supabase = _get_supabase()
     if not supabase:
         return None
 
     try:
-        result = (
+        query = (
             supabase.table("agency_stats_cache")
             .select("*")
             .eq("slug", slug)
-            .single()
-            .execute()
         )
-        row = result.data
+        if jurisdiction:
+            query = query.eq("jurisdiction", jurisdiction)
+        result = query.order("number_requests", desc=True).limit(1).execute()
+        row = result.data[0] if result.data else None
     except Exception as e:
         logger.warning(f"Hub agency detail query failed for {slug}: {e}")
         return None
