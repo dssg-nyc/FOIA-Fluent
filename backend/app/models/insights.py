@@ -3,13 +3,14 @@ from pydantic import BaseModel
 
 class HeroStats(BaseModel):
     latest_year: int = 0
-    total_received: int = 0
-    total_processed: int = 0
-    total_backlog: int = 0
+    total_agencies: int = 0
+    # Cumulative totals (FY 2008-latest)
+    cumulative_received: int = 0
+    cumulative_processed: int = 0
+    # Latest year snapshot
+    current_backlog: int = 0
     total_costs: float = 0
     total_staff_fte: float = 0
-    yoy_received_pct: float = 0  # year-over-year change
-    yoy_backlog_pct: float = 0
 
 
 class VolumeTrend(BaseModel):

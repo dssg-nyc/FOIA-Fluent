@@ -36,24 +36,6 @@ function fmtDollars(n: number): string {
   return `$${n.toLocaleString()}`;
 }
 
-function yoyArrow(pct: number): string {
-  if (pct > 0) return `+${pct.toFixed(1)}%`;
-  if (pct < 0) return `${pct.toFixed(1)}%`;
-  return "—";
-}
-
-function yoyColor(pct: number, inverted = false): string {
-  // For backlog, increase is bad (inverted)
-  if (inverted) {
-    if (pct > 0) return "var(--red)";
-    if (pct < 0) return "var(--green)";
-  } else {
-    if (pct > 0) return "var(--green)";
-    if (pct < 0) return "var(--red)";
-  }
-  return "var(--muted)";
-}
-
 const CHART_COLORS = {
   received: "#3b82f6",
   processed: "#059669",
@@ -129,9 +111,6 @@ export default function InsightsPage() {
   }
 
   const hs = data.hero_stats;
-  const lastRefreshed = data.last_refreshed
-    ? new Date(data.last_refreshed).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
-    : "—";
 
   // Requester types for charts
   const requesterTotal = Object.values(data.requester_types).reduce((sum, v) => sum + v, 0);
@@ -159,45 +138,43 @@ export default function InsightsPage() {
         <div className="header">
           <h1>FOIA Insights & Trends</h1>
           <p className="hub-header-subtitle">
-            Deep analysis of FOIA transparency across the U.S. government.
+            Historical analysis of FOIA transparency across <strong>{hs.total_agencies}</strong> federal agencies.
             Data from <strong>FOIA.gov</strong> annual reports (FY 2008–{hs.latest_year}).
           </p>
-          <p className="hub-refresh-note">Last updated: {lastRefreshed}</p>
         </div>
 
         {/* ── 1. Hero Stats (3x2 grid) ── */}
         <div className="hub-stats-grid" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
           <StatCard
-            label={`Requests Filed (FY ${hs.latest_year})`}
-            value={fmt(hs.total_received)}
-            sub={yoyArrow(hs.yoy_received_pct) + " vs prior year"}
-            accent={yoyColor(hs.yoy_received_pct)}
+            label="Total Requests Filed"
+            value={fmt(hs.cumulative_received)}
+            sub={`Cumulative FY 2008–${hs.latest_year}`}
           />
           <StatCard
-            label="Requests Processed"
-            value={fmt(hs.total_processed)}
-            sub="Completed in latest fiscal year"
+            label="Total Requests Processed"
+            value={fmt(hs.cumulative_processed)}
+            sub={`Cumulative FY 2008–${hs.latest_year}`}
           />
           <StatCard
-            label="Current Backlog"
-            value={fmt(hs.total_backlog)}
-            sub={yoyArrow(hs.yoy_backlog_pct) + " vs prior year"}
-            accent={yoyColor(hs.yoy_backlog_pct, true)}
+            label={`FY ${hs.latest_year} Backlog`}
+            value={fmt(hs.current_backlog)}
+            sub="Requests pending at end of fiscal year"
+            accent="var(--red)"
           />
           <StatCard
-            label="Total Cost to Government"
+            label={`FY ${hs.latest_year} Cost to Government`}
             value={fmtDollars(hs.total_costs)}
-            sub="FOIA processing costs"
+            sub="FOIA processing costs (latest year)"
           />
           <StatCard
-            label="FOIA Staff (FTEs)"
+            label={`FY ${hs.latest_year} FOIA Staff`}
             value={fmt(Math.round(hs.total_staff_fte))}
-            sub="Full-time equivalents"
+            sub="Full-time equivalents (latest year)"
           />
           <StatCard
-            label="Cost Per Request"
-            value={hs.total_processed > 0 ? fmtDollars(Math.round(hs.total_costs / hs.total_processed)) : "—"}
-            sub="Average processing cost"
+            label="Federal Agencies"
+            value={hs.total_agencies.toString()}
+            sub="Reporting to FOIA.gov"
           />
         </div>
 

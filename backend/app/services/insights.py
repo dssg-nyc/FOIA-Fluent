@@ -68,24 +68,29 @@ def get_hero_stats(rows: list[dict]) -> HeroStats:
     if not rows:
         return HeroStats()
     latest = rows[-1]
-    prev = rows[-2] if len(rows) >= 2 else None
 
-    yoy_received = 0
-    yoy_backlog = 0
-    if prev and prev.get("total_received"):
-        yoy_received = round(((latest["total_received"] - prev["total_received"]) / prev["total_received"]) * 100, 1)
-    if prev and prev.get("total_backlog"):
-        yoy_backlog = round(((latest["total_backlog"] - prev["total_backlog"]) / prev["total_backlog"]) * 100, 1)
+    # Cumulative totals across all years
+    cumulative_received = sum(r.get("total_received") or 0 for r in rows)
+    cumulative_processed = sum(r.get("total_processed") or 0 for r in rows)
+
+    # Count unique agencies in foia_annual_reports
+    total_agencies = 0
+    supabase = _get_supabase()
+    if supabase:
+        try:
+            result = supabase.table("foia_annual_reports").select("agency_abbreviation").execute()
+            total_agencies = len(set(r["agency_abbreviation"] for r in (result.data or [])))
+        except Exception:
+            pass
 
     return HeroStats(
         latest_year=latest["fiscal_year"],
-        total_received=latest.get("total_received") or 0,
-        total_processed=latest.get("total_processed") or 0,
-        total_backlog=latest.get("total_backlog") or 0,
+        total_agencies=total_agencies,
+        cumulative_received=cumulative_received,
+        cumulative_processed=cumulative_processed,
+        current_backlog=latest.get("total_backlog") or 0,
         total_costs=latest.get("total_costs") or 0,
         total_staff_fte=latest.get("total_staff_fte") or 0,
-        yoy_received_pct=yoy_received,
-        yoy_backlog_pct=yoy_backlog,
     )
 
 
