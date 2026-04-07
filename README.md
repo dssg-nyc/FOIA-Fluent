@@ -4,7 +4,7 @@
 
 **[Live Site](https://www.foiafluent.com)** · Built with ❤️ by [NYC-DSSG](https://www.nyc-dssg.org/) (Data Science for Social Good).
 
-![FOIA Fluent — Homepage](docs/images/homepage.png)
+![FOIA Fluent — Homepage](docs/images/homepage_update.png)
 
 ![FOIA Fluent — Search & Draft](docs/images/draft_page.png)
 
