@@ -139,6 +139,28 @@ TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "get_recent_signals",
+        "description": "Get recent items from the Live FOIA Signals feed — realtime intelligence pulled from GAO bid protests, EPA ECHO enforcement, FDA Warning Letters, and DHS FOIA logs. Filter by persona (journalist, pharma_analyst, hedge_fund, environmental), keyword, and recency window. Use when a user asks 'what's new', 'what FOIA signals broke this week', or anything about realtime/live intelligence.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "persona": {
+                    "type": "string",
+                    "description": "Optional persona filter: journalist, pharma_analyst, hedge_fund, or environmental. Empty for all.",
+                },
+                "query": {
+                    "type": "string",
+                    "description": "Optional keyword to match in title or summary",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "How many days back to look (default 7)",
+                },
+            },
+            "required": [],
+        },
+    },
 ]
 
 # ── System prompt ────────────────────────────────────────────────────────────
@@ -276,6 +298,12 @@ async def execute_tool(name: str, args: dict, user_id: Optional[str] = None) -> 
             result = chat_tools.get_hub_stats(args.get("query", ""))
         elif name == "search_muckrock":
             result = await chat_tools.search_muckrock(args.get("query", ""))
+        elif name == "get_recent_signals":
+            result = chat_tools.get_recent_signals(
+                persona=args.get("persona", ""),
+                query=args.get("query", ""),
+                days=int(args.get("days", 7) or 7),
+            )
         else:
             result = {"error": f"Unknown tool: {name}"}
     except Exception as e:

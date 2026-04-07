@@ -326,3 +326,30 @@ def get_hub_stats(query: str = "") -> dict:
 async def search_muckrock(query: str) -> dict:
     """Search MuckRock for similar FOIA requests and outcomes."""
     return await search_web(f"site:muckrock.com {query}", trusted_only=False)
+
+
+# ── Tool: get_recent_signals (Live FOIA Signals) ────────────────────────────
+
+def get_recent_signals(persona: str = "", query: str = "", days: int = 7) -> dict:
+    """Get recent items from the Live FOIA Signals feed.
+
+    Filters by optional persona ("journalist", "pharma_analyst", "hedge_fund",
+    "environmental"), optional keyword (matched in title/summary), and a recency
+    window in days. READ-ONLY.
+    """
+    from app.services.signals import get_recent_signals_for_chat
+    try:
+        rows = get_recent_signals_for_chat(persona=persona, query=query, days=days, limit=10)
+        if not rows:
+            return {
+                "signals": [],
+                "message": "No signals matched. The Live FOIA Signals feed updates from GAO bid protests, EPA ECHO enforcement, FDA Warning Letters, and DHS FOIA logs.",
+            }
+        return {
+            "signals": rows,
+            "count": len(rows),
+            "source": "FOIA Fluent Live Signals feed (foia_signals_feed)",
+        }
+    except Exception as e:
+        logger.error(f"get_recent_signals failed: {e}")
+        return {"signals": [], "message": f"Error: {e}"}

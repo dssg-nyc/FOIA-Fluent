@@ -61,6 +61,13 @@ export default function Nav() {
           >
             My Requests
           </Link>
+          <Link
+            href="/signals"
+            className={`nav-link nav-link-signals ${pathname.startsWith("/signals") ? "nav-link-active" : ""}`}
+          >
+            <span className="nav-signals-pulse" aria-hidden="true" />
+            Live FOIA Signals
+          </Link>
         </div>
         {supabase && (
           <div className="nav-user">

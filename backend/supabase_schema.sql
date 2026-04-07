@@ -236,3 +236,83 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER set_updated_at
     BEFORE UPDATE ON tracked_requests
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ── Live FOIA Signals (Phase 1) ────────────────────────────────────────────────
+-- Realtime intelligence layer. Ingestion scripts in backend/app/scripts/
+-- refresh_signals_*.py write to foia_signals_feed; the /api/v1/signals/* routes
+-- read it; users subscribe to personas to filter.
+
+-- Static catalog of industry personas users can subscribe to.
+-- Seeded by seed_personas.py. Phase 1 ships with 4 pilot personas.
+CREATE TABLE IF NOT EXISTS personas (
+    id              TEXT PRIMARY KEY,             -- e.g. "journalist", "pharma_analyst"
+    name            TEXT NOT NULL,                -- "Investigative Journalist"
+    description     TEXT DEFAULT '',
+    icon            TEXT DEFAULT '',
+    display_order   INT DEFAULT 0,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- The aggregated signal feed — heart of the Signals system.
+-- Each row is one signal from one upstream source after Claude extraction.
+CREATE TABLE IF NOT EXISTS foia_signals_feed (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source          TEXT NOT NULL,                -- "gao_protests" | "epa_echo" | "fda_warning_letters" | "dhs_foia_log"
+    source_id       TEXT NOT NULL,                -- upstream identifier (used for dedup)
+    title           TEXT NOT NULL,
+    summary         TEXT DEFAULT '',              -- AI-generated 1-2 sentence summary
+    body_excerpt    TEXT DEFAULT '',              -- raw excerpt from upstream
+    source_url      TEXT DEFAULT '',
+    signal_date     TIMESTAMPTZ NOT NULL,         -- when the upstream event occurred
+    ingested_at     TIMESTAMPTZ DEFAULT NOW(),
+    agency_codes    TEXT[] DEFAULT '{}',          -- ["EPA", "DHS"]
+    entities        JSONB DEFAULT '{}',           -- {companies, people, locations, regulations, dollar_amounts}
+    persona_tags    TEXT[] DEFAULT '{}',          -- subset of personas.id values
+    priority        INT DEFAULT 0,                -- 0=low, 1=normal, 2=high
+    requester       TEXT DEFAULT '',              -- who filed the upstream FOIA request (when applicable; populated by FOIA-log sources)
+    metadata        JSONB DEFAULT '{}',           -- source-specific extras
+    UNIQUE (source, source_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_signals_personas ON foia_signals_feed USING GIN (persona_tags);
+CREATE INDEX IF NOT EXISTS idx_signals_agencies ON foia_signals_feed USING GIN (agency_codes);
+CREATE INDEX IF NOT EXISTS idx_signals_signal_date ON foia_signals_feed (signal_date DESC);
+CREATE INDEX IF NOT EXISTS idx_signals_source ON foia_signals_feed (source);
+CREATE INDEX IF NOT EXISTS idx_signals_requester ON foia_signals_feed (requester) WHERE requester <> '';
+
+-- Per-user persona subscriptions. RLS-protected so users only see/modify their own.
+CREATE TABLE IF NOT EXISTS user_personas (
+    user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    persona_id  TEXT NOT NULL REFERENCES personas(id) ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, persona_id)
+);
+
+ALTER TABLE user_personas ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_personas_select" ON user_personas
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users_own_personas_insert" ON user_personas
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "users_own_personas_delete" ON user_personas
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Forward-compat watchlist table (schema only in Phase 1; UI lands in Phase 3).
+CREATE TABLE IF NOT EXISTS user_watchlists (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    watchlist_type  TEXT NOT NULL,                -- "company" | "agency" | "keyword" | "zip_code"
+    value           TEXT NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_watchlists ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_watchlists_select" ON user_watchlists
+    FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "users_own_watchlists_insert" ON user_watchlists
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "users_own_watchlists_delete" ON user_watchlists
+    FOR DELETE USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_watchlists_user_id ON user_watchlists (user_id);
