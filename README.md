@@ -2,7 +2,7 @@
 
 ### A civic AI platform that cuts through government opacity — finding existing public records, drafting optimized requests under federal and state transparency laws, tracking agency responses, and providing deep FOIA insights so documents reach the people who need them.
 
-**[Live Site](https://www.foiafluent.com)** · Built with ❤️ by [NYC-DSSG](https://www.nyc-dssg.org/) (Data Science for Social Good).
+**[Live Site](https://www.foiafluent.com)**
 
 ![FOIA Fluent — Homepage](docs/images/homepage_update.png)
 
@@ -224,6 +224,3 @@ python -m app.scripts.refresh_news_digest
 
 This project is open source under [dssg-nyc](https://github.com/dssg-nyc). We welcome contributions — see the issues tab or reach out.
 
-## License
-
-MIT
