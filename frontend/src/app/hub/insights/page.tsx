@@ -9,9 +9,6 @@ import {
   Line,
   BarChart,
   Bar,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -36,22 +33,21 @@ function fmtDollars(n: number): string {
   return `$${n.toLocaleString()}`;
 }
 
+// Restrained palette: black/charcoal for primary, slate grays for secondary, single blue accent
 const CHART_COLORS = {
-  received: "#3b82f6",
-  processed: "#059669",
-  backlog: "#dc2626",
-  fullGrant: "#059669",
-  partial: "#f59e0b",
-  denial: "#dc2626",
-  simple: "#3b82f6",
-  complex: "#dc2626",
-  costs: "#8b5cf6",
-  staff: "#059669",
-  appeals: "#d97706",
-  litigation: "#dc2626",
+  received: "#1863dc",   // Cohere blue (volume)
+  processed: "#000000",  // Black (completion)
+  backlog: "#dc2626",    // Red (problem indicator — kept for clarity)
+  fullGrant: "#000000",  // Black
+  partial: "#9ca3af",    // Slate gray
+  denial: "#dc2626",     // Red (functional)
+  simple: "#1863dc",     // Blue
+  complex: "#000000",    // Black
+  costs: "#1863dc",      // Blue
+  staff: "#9ca3af",      // Slate
+  appeals: "#000000",    // Black
+  litigation: "#dc2626", // Red (functional)
 };
-
-const PIE_COLORS = ["#059669", "#3b82f6", "#d97706", "#8b5cf6", "#6b7280"];
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -112,17 +108,6 @@ export default function InsightsPage() {
 
   const hs = data.hero_stats;
 
-  // Requester types for charts
-  const requesterTotal = Object.values(data.requester_types).reduce((sum, v) => sum + v, 0);
-  const requesterBarData = Object.entries(data.requester_types)
-    .filter(([, v]) => v > 0)
-    .map(([key, value]) => ({
-      name: key,
-      value,
-      pct: requesterTotal > 0 ? ((value / requesterTotal) * 100).toFixed(1) : "0",
-    }))
-    .sort((a, b) => b.value - a.value);
-
   return (
     <main>
       <div className="hub-container">
@@ -136,10 +121,9 @@ export default function InsightsPage() {
 
         {/* ── Header ── */}
         <div className="header">
-          <h1>FOIA Insights & Trends</h1>
+          <h1>17 years of federal FOIA, in one view</h1>
           <p className="hub-header-subtitle">
-            Historical analysis of FOIA transparency across <strong>{hs.total_agencies}</strong> federal agencies.
-            Data from <strong>FOIA.gov</strong> annual reports (FY 2008–{hs.latest_year}).
+            Historical trends across <strong>{hs.total_agencies}</strong> federal agencies — request volume, denial rates, processing times, exemptions, and litigation. Sourced from FOIA.gov annual reports (FY 2008–{hs.latest_year}).
           </p>
         </div>
 
@@ -188,9 +172,9 @@ export default function InsightsPage() {
               <YAxis tick={{ fontSize: 11 }} tickFormatter={fmt} />
               <Tooltip formatter={(v) => [Number(v).toLocaleString(), ""]} />
               <Legend />
-              <Area type="monotone" dataKey="received" name="Received" stroke={CHART_COLORS.received} fill={CHART_COLORS.received} fillOpacity={0.15} />
-              <Area type="monotone" dataKey="processed" name="Processed" stroke={CHART_COLORS.processed} fill={CHART_COLORS.processed} fillOpacity={0.15} />
-              <Area type="monotone" dataKey="backlog" name="Backlog" stroke={CHART_COLORS.backlog} fill={CHART_COLORS.backlog} fillOpacity={0.1} />
+              <Area type="monotone" dataKey="received" name="Received" stroke={CHART_COLORS.received} fill={CHART_COLORS.received} fillOpacity={0.15} animationDuration={1200} animationEasing="ease-out" />
+              <Area type="monotone" dataKey="processed" name="Processed" stroke={CHART_COLORS.processed} fill={CHART_COLORS.processed} fillOpacity={0.15} animationDuration={1400} animationEasing="ease-out" animationBegin={200} />
+              <Area type="monotone" dataKey="backlog" name="Backlog" stroke={CHART_COLORS.backlog} fill={CHART_COLORS.backlog} fillOpacity={0.1} animationDuration={1600} animationEasing="ease-out" animationBegin={400} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -206,9 +190,9 @@ export default function InsightsPage() {
                 <YAxis tick={{ fontSize: 11 }} unit="%" />
                 <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}%`, ""]} />
                 <Legend />
-                <Area type="monotone" dataKey="full_grant_rate" name="Full Grant" stroke={CHART_COLORS.fullGrant} fill={CHART_COLORS.fullGrant} fillOpacity={0.2} stackId="1" />
-                <Area type="monotone" dataKey="partial_grant_rate" name="Partial" stroke={CHART_COLORS.partial} fill={CHART_COLORS.partial} fillOpacity={0.2} stackId="1" />
-                <Area type="monotone" dataKey="denial_rate" name="Denial" stroke={CHART_COLORS.denial} fill={CHART_COLORS.denial} fillOpacity={0.2} stackId="1" />
+                <Area type="monotone" dataKey="full_grant_rate" name="Full Grant" stroke={CHART_COLORS.fullGrant} fill={CHART_COLORS.fullGrant} fillOpacity={0.2} stackId="1" animationDuration={1200} animationEasing="ease-out" />
+                <Area type="monotone" dataKey="partial_grant_rate" name="Partial" stroke={CHART_COLORS.partial} fill={CHART_COLORS.partial} fillOpacity={0.2} stackId="1" animationDuration={1400} animationEasing="ease-out" animationBegin={150} />
+                <Area type="monotone" dataKey="denial_rate" name="Denial" stroke={CHART_COLORS.denial} fill={CHART_COLORS.denial} fillOpacity={0.2} stackId="1" animationDuration={1600} animationEasing="ease-out" animationBegin={300} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -222,8 +206,8 @@ export default function InsightsPage() {
                 <YAxis tick={{ fontSize: 11 }} unit="%" />
                 <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}%`, ""]} />
                 <Legend />
-                <Line type="monotone" dataKey="full_grant_rate" name="Full Grant Rate" stroke={CHART_COLORS.fullGrant} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="denial_rate" name="Denial Rate" stroke={CHART_COLORS.denial} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="full_grant_rate" name="Full Grant Rate" stroke={CHART_COLORS.fullGrant} strokeWidth={2} dot={false} animationDuration={1400} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="denial_rate" name="Denial Rate" stroke={CHART_COLORS.denial} strokeWidth={2} dot={false} animationDuration={1600} animationEasing="ease-out" animationBegin={200} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -232,15 +216,26 @@ export default function InsightsPage() {
         {/* ── 4. Most Requested Agencies — FULL WIDTH ── */}
         <div className="hub-chart-card">
           <h3 className="hub-chart-title">Most Requested Agencies (FY {hs.latest_year})</h3>
-          <ResponsiveContainer width="100%" height={420}>
-            <BarChart layout="vertical" data={data.top_agencies} margin={{ top: 4, right: 30, left: 8, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
-              <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
-              <Tooltip formatter={(v) => [Number(v).toLocaleString(), "Requests"]} />
-              <Bar dataKey="requests_received" fill="#1B4F72" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="ranked-bar-list">
+            {(() => {
+              const maxRequests = Math.max(...data.top_agencies.map((a) => a.requests_received), 1);
+              return data.top_agencies.slice(0, 15).map((agency, i) => (
+                <div key={agency.name + i} className="ranked-bar-item">
+                  <div className="ranked-bar-header">
+                    <span className="ranked-bar-rank">{i + 1}</span>
+                    <span className="ranked-bar-name">{agency.name}</span>
+                    <span className="ranked-bar-score">{fmt(agency.requests_received)}</span>
+                  </div>
+                  <div className="ranked-bar-track">
+                    <div
+                      className="ranked-bar-fill"
+                      style={{ width: `${(agency.requests_received / maxRequests) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ));
+            })()}
+          </div>
         </div>
 
         {/* ── 5. Exemptions + Processing Times (side by side) ── */}
@@ -248,19 +243,27 @@ export default function InsightsPage() {
           {data.exemption_breakdown.length > 0 && (
             <div className="hub-chart-card">
               <h3 className="hub-chart-title">Most Cited Exemptions (FY {hs.latest_year})</h3>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart layout="vertical" data={data.exemption_breakdown.slice(0, 10)} margin={{ top: 4, right: 24, left: 8, bottom: 4 }}>
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
-                  <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10 }} />
-                  <Tooltip
-                    formatter={(v, _name, props) => [
-                      `${Number(v).toLocaleString()} times cited`,
-                      (props.payload as { description?: string })?.description || "",
-                    ]}
-                  />
-                  <Bar dataKey="count" fill="#d97706" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="ranked-bar-list">
+                {(() => {
+                  const exemptions = data.exemption_breakdown.slice(0, 10);
+                  const maxCount = Math.max(...exemptions.map((e) => e.count), 1);
+                  return exemptions.map((ex, i) => (
+                    <div key={ex.code} className="ranked-bar-item" title={ex.description}>
+                      <div className="ranked-bar-header">
+                        <span className="ranked-bar-rank">{i + 1}</span>
+                        <span className="ranked-bar-name">{ex.name}</span>
+                        <span className="ranked-bar-score">{fmt(ex.count)}</span>
+                      </div>
+                      <div className="ranked-bar-track">
+                        <div
+                          className="ranked-bar-fill"
+                          style={{ width: `${(ex.count / maxCount) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
             </div>
           )}
 
@@ -273,8 +276,8 @@ export default function InsightsPage() {
                 <YAxis tick={{ fontSize: 11 }} unit="d" />
                 <Tooltip formatter={(v) => [`${Number(v).toFixed(1)} days`, ""]} />
                 <Legend />
-                <Line type="monotone" dataKey="median_simple" name="Simple Requests" stroke={CHART_COLORS.simple} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="median_complex" name="Complex Requests" stroke={CHART_COLORS.complex} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="median_simple" name="Simple Requests" stroke={CHART_COLORS.simple} strokeWidth={2} dot={false} animationDuration={1400} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="median_complex" name="Complex Requests" stroke={CHART_COLORS.complex} strokeWidth={2} dot={false} animationDuration={1600} animationEasing="ease-out" animationBegin={200} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -294,8 +297,8 @@ export default function InsightsPage() {
                   "",
                 ]} />
                 <Legend />
-                <Line type="monotone" dataKey="total_costs" name="Total Costs" stroke={CHART_COLORS.costs} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="cost_per_request" name="Cost/Request" stroke={CHART_COLORS.staff} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="total_costs" name="Total Costs" stroke={CHART_COLORS.costs} strokeWidth={2} dot={false} animationDuration={1400} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="cost_per_request" name="Cost/Request" stroke={CHART_COLORS.staff} strokeWidth={2} dot={false} animationDuration={1600} animationEasing="ease-out" animationBegin={200} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -309,8 +312,8 @@ export default function InsightsPage() {
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={fmt} />
                 <Tooltip formatter={(v) => [Number(v).toLocaleString(), ""]} />
                 <Legend />
-                <Bar dataKey="appeals" name="Appeals" fill={CHART_COLORS.appeals} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="litigation" name="Litigation Cases" fill={CHART_COLORS.litigation} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="appeals" name="Appeals" fill={CHART_COLORS.appeals} radius={[4, 4, 0, 0]} animationDuration={1200} animationEasing="ease-out" />
+                <Bar dataKey="litigation" name="Litigation Cases" fill={CHART_COLORS.litigation} radius={[4, 4, 0, 0]} animationDuration={1400} animationEasing="ease-out" animationBegin={150} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -321,7 +324,7 @@ export default function InsightsPage() {
           const CATEGORY_META: Record<string, { label: string; icon: string; color: string }> = {
             court_case: { label: "Court Cases & Litigation", icon: "\u2696\ufe0f", color: "#dc2626" },
             investigation: { label: "Investigations & Oversight", icon: "\ud83d\udd0d", color: "#7c3aed" },
-            policy: { label: "Policy & Legislation", icon: "\ud83d\udcdc", color: "#1B4F72" },
+            policy: { label: "Policy & Legislation", icon: "\ud83d\udcdc", color: "#1863dc" },
             report: { label: "Reports & Analysis", icon: "\ud83d\udcca", color: "#059669" },
             news: { label: "News & Updates", icon: "\ud83d\udcf0", color: "#d97706" },
           };

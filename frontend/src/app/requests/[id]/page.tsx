@@ -569,8 +569,8 @@ function AnalysisBody({ analysis }: { analysis: ResponseAnalysis }) {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  documentcloud: "#1B4F72",
-  web: "#7c3aed",
+  documentcloud: "#1863dc",
+  web: "#475569",
   muckrock: "#059669",
 };
 

@@ -119,7 +119,7 @@ export default function ImportPage() {
       <main className="container">
         <div className="dashboard-header">
           <div>
-            <h1 className="dashboard-title">Add Existing Request</h1>
+            <h1 className="dashboard-title">Import an existing request</h1>
             <p className="dashboard-subtitle">
               Bring an in-flight FOIA request into the system — we'll analyze your letter
               and set up deadline tracking.
