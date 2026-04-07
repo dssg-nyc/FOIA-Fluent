@@ -2,13 +2,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface HeroStats {
   latest_year: number;
-  total_received: number;
-  total_processed: number;
-  total_backlog: number;
+  total_agencies: number;
+  cumulative_received: number;
+  cumulative_processed: number;
+  current_backlog: number;
   total_costs: number;
   total_staff_fte: number;
-  yoy_received_pct: number;
-  yoy_backlog_pct: number;
 }
 
 export interface VolumeTrend {

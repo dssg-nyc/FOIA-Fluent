@@ -24,7 +24,7 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const SOURCE_COLORS: Record<string, string> = {
-  documentcloud: "#1B4F72",
+  documentcloud: "#1863dc",
   web: "#7c3aed",
   muckrock: "#059669",
 };
@@ -238,10 +238,10 @@ export default function Home() {
   return (
     <main className="container">
       <header className="header">
-        <h1>FOIA Fluent</h1>
+        <h1>Find records. Draft requests.</h1>
         <p>
-          Describe what information you need — we&apos;ll find existing requests,
-          public documents, and help you get the records released
+          Describe what you need — we&apos;ll surface existing requests, public
+          documents, and help you get the records released.
         </p>
       </header>
 

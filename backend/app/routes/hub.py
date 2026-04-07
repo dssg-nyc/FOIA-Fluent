@@ -30,7 +30,7 @@ def get_global_stats():
 def list_agencies(
     search: Optional[str] = Query(None, description="Filter by agency name"),
     sort_by: str = Query("transparency_score", description="Field to sort by"),
-    min_requests: int = Query(5, ge=0, description="Minimum number of requests"),
+    min_requests: int = Query(1, ge=0, description="Minimum number of requests"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ):

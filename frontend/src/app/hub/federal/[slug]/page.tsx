@@ -155,13 +155,13 @@ export default function AgencyDetailPage() {
   const { stats, percentile } = detail;
 
   const outcomePieData = [
-    { name: "Completed", value: stats.number_requests_completed, color: "#059669" },
+    { name: "Completed", value: stats.number_requests_completed, color: "#000000" },
     { name: "Rejected", value: stats.number_requests_rejected, color: "#dc2626" },
     { name: "No Responsive Docs", value: stats.number_requests_no_docs, color: "#d97706" },
     { name: "Partial", value: stats.number_requests_partial, color: "#f59e0b" },
-    { name: "Appealing", value: stats.number_requests_appeal + stats.number_requests_lawsuit, color: "#7c3aed" },
-    { name: "Withdrawn", value: stats.number_requests_withdrawn, color: "#6b7280" },
-    { name: "In Progress", value: stats.number_requests_ack + stats.number_requests_resp + stats.number_requests_fix + stats.number_requests_pay, color: "#3b82f6" },
+    { name: "Appealing", value: stats.number_requests_appeal + stats.number_requests_lawsuit, color: "#475569" },
+    { name: "Withdrawn", value: stats.number_requests_withdrawn, color: "#94a3b8" },
+    { name: "In Progress", value: stats.number_requests_ack + stats.number_requests_resp + stats.number_requests_fix + stats.number_requests_pay, color: "#1863dc" },
   ].filter((d) => d.value > 0);
 
   // Score component breakdown — rates are 0–100 percentages from MuckRock
@@ -293,7 +293,7 @@ export default function AgencyDetailPage() {
                     "Points",
                   ]}
                 />
-                <Bar dataKey="value" fill="var(--primary)" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" fill="var(--primary)" radius={[0, 4, 4, 0]} animationDuration={1200} animationEasing="ease-out" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -313,6 +313,8 @@ export default function AgencyDetailPage() {
                   outerRadius={80}
                   paddingAngle={2}
                   dataKey="value"
+                  animationDuration={1200}
+                  animationEasing="ease-out"
                 >
                   {outcomePieData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />

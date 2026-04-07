@@ -22,10 +22,18 @@ logger = logging.getLogger(__name__)
 FOIA_GOV_BASE = "https://api.foia.gov/api"
 # Major federal agencies to fetch (abbreviations used by FOIA.gov)
 AGENCIES = [
-    "DOJ", "DHS", "DOD", "HHS", "VA", "USDA", "DOI", "Treasury", "DOT",
-    "Commerce", "DOL", "ED", "EPA", "HUD", "DOE", "State", "SBA", "SSA",
-    "NASA", "OPM", "GSA", "NRC", "SEC", "FTC", "FCC", "EEOC", "NARA",
-    "USPS", "CIA", "ODNI", "NSA", "FEMA",
+    "ABMC", "ACHP", "ACUS", "AFRH", "CEQ", "CFPB", "CFTC", "CIA", "CIGIE",
+    "CNCS", "Commerce", "CPPBSD", "CPSC", "CSB", "CSOSA", "DFC", "DHS",
+    "DNFSB", "DOD", "DOE", "DOI", "DOJ", "DOL", "DOT", "EAC", "ED", "EEOC",
+    "EPA", "EXIM", "FCA", "FCC", "FDIC", "FEC", "FERC", "FFIEC", "FHFA",
+    "FLRA", "FMC", "FMCS", "FMSHRC", "FRB", "FRTIB", "FTC", "GSA", "HHS",
+    "HUD", "IAF", "IMLS", "LSC", "MCC", "MMC", "MSPB", "NARA", "NASA",
+    "NCPC", "NCUA", "NEA", "NEH", "NIGC", "NLRB", "NMB", "NRC", "NSF",
+    "NTSB", "NWTRB", "ODNI", "OGE", "OMB", "ONDCP", "ONHIR", "OPM", "OSC",
+    "OSHRC", "OSTP", "PBGC", "PCLOB", "PRC", "SBA", "SEC", "SIGAR", "SSA",
+    "State", "STB", "Treasury", "TVA", "USAB", "USADF", "USAGM", "USAID",
+    "USCCR", "USDA", "USIBWC", "USICH", "USIP", "USITC", "USPS", "USTDA",
+    "USTR", "VA",
 ]
 FISCAL_YEARS = list(range(2008, 2025))  # FY 2008-2024
 

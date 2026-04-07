@@ -3,10 +3,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   Tooltip,
   ResponsiveContainer,
   PieChart,
@@ -184,22 +180,19 @@ export default function DataHubPage() {
   // Pie chart data for overall outcomes
   const pieData = globalStats
     ? [
-        { name: "Completed", value: globalStats.total_completed, color: "#059669" },
+        { name: "Completed", value: globalStats.total_completed, color: "#000000" },
         { name: "Rejected", value: globalStats.total_rejected, color: "#dc2626" },
         { name: "No Responsive Docs", value: globalStats.total_no_docs, color: "#d97706" },
         { name: "Partial", value: globalStats.total_partial, color: "#f59e0b" },
-        { name: "Appealing", value: globalStats.total_appeal, color: "#7c3aed" },
-        { name: "Withdrawn", value: globalStats.total_withdrawn, color: "#6b7280" },
-        { name: "In Progress", value: globalStats.total_in_progress, color: "#3b82f6" },
+        { name: "Appealing", value: globalStats.total_appeal, color: "#475569" },
+        { name: "Withdrawn", value: globalStats.total_withdrawn, color: "#94a3b8" },
+        { name: "In Progress", value: globalStats.total_in_progress, color: "#1863dc" },
       ].filter((d) => d.value > 0)
     : [];
 
-  // Bar chart data for top agencies
-  const topBarData = globalStats?.top_agencies.slice(0, 10).map((a) => ({
-    name: a.name.length > 22 ? a.name.slice(0, 20) + "…" : a.name,
-    score: parseFloat(a.transparency_score.toFixed(1)),
-    slug: a.slug,
-  })) ?? [];
+  // Top agencies for ranked list visualization
+  const topAgencies = globalStats?.top_agencies.slice(0, 10) ?? [];
+  const maxTopScore = Math.max(...topAgencies.map((a) => a.transparency_score), 100);
 
   if (loading) {
     return (
@@ -242,25 +235,11 @@ export default function DataHubPage() {
 
         {/* ── Header ── */}
         <div className="header">
-          <h1>FOIA Transparency Hub</h1>
+          <h1>The federal transparency benchmark</h1>
           <p className="hub-header-subtitle">
-            <span className="hub-scope-badge" title="Does not include state, local, or international agencies from MuckRock's full database">
-              Federal only
-            </span>
-            {" "}transparency data across{" "}
-            <strong>{gs.total_agencies.toLocaleString()}</strong> federal agencies, sourced
-            from MuckRock&apos;s public FOIA database. Updated weekly.
+            Live FOIA performance data for{" "}
+            <strong>{gs.total_agencies.toLocaleString()}</strong> federal agencies — success rates, response times, and exemption patterns sourced from MuckRock&apos;s public records database.
           </p>
-          {gs.last_refreshed && (
-            <p className="hub-refresh-note">
-              Last updated:{" "}
-              {new Date(gs.last_refreshed).toLocaleDateString("en-US", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </p>
-          )}
           <div className="hub-header-cta">
             <Link href="/draft" className="hub-cta-primary">
               Draft a FOIA Request
@@ -312,6 +291,8 @@ export default function DataHubPage() {
                   outerRadius={90}
                   paddingAngle={2}
                   dataKey="value"
+                  animationDuration={1200}
+                  animationEasing="ease-out"
                 >
                   {pieData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
@@ -335,36 +316,30 @@ export default function DataHubPage() {
             </div>
           </div>
 
-          {/* Top 10 Bar Chart */}
+          {/* Top 10 Ranked List */}
           <div className="hub-chart-card hub-chart-card-wide">
             <h3 className="hub-chart-title">Top 10 Most Transparent Agencies</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart
-                layout="vertical"
-                data={topBarData}
-                margin={{ top: 4, right: 24, left: 8, bottom: 4 }}
-              >
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={140}
-                  tick={{ fontSize: 11 }}
-                />
-                <Tooltip
-                  formatter={(v) => [`${Number(v).toFixed(1)}/100`, "Transparency Score"]}
-                />
-                <Bar dataKey="score" radius={[0, 4, 4, 0]}>
-                  {topBarData.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={scoreColor(entry.score)}
-                      fillOpacity={0.85}
+            <div className="ranked-bar-list">
+              {topAgencies.map((agency, i) => (
+                <Link
+                  key={agency.id}
+                  href={`/hub/federal/${agency.slug}`}
+                  className="ranked-bar-item"
+                >
+                  <div className="ranked-bar-header">
+                    <span className="ranked-bar-rank">{i + 1}</span>
+                    <span className="ranked-bar-name">{agency.name}</span>
+                    <span className="ranked-bar-score">{agency.transparency_score.toFixed(1)}</span>
+                  </div>
+                  <div className="ranked-bar-track">
+                    <div
+                      className="ranked-bar-fill"
+                      style={{ width: `${(agency.transparency_score / maxTopScore) * 100}%` }}
                     />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
 

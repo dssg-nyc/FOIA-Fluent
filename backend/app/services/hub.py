@@ -65,10 +65,22 @@ def get_global_stats() -> GlobalStats:
         return _empty_global_stats()
 
     try:
+        # Get exact count (Supabase caps data at 1000 rows)
+        count_result = (
+            supabase.table("agency_stats_cache")
+            .select("id", count="exact")
+            .eq("jurisdiction", "Federal")
+            .gte("number_requests", 1)
+            .execute()
+        )
+        exact_count = count_result.count or 0
+
+        # Fetch data (up to 1000 rows for stats computation)
         result = (
             supabase.table("agency_stats_cache")
             .select("*")
-            .gte("number_requests", 5)   # only agencies with meaningful data
+            .eq("jurisdiction", "Federal")
+            .gte("number_requests", 1)
             .execute()
         )
         rows = result.data or []
@@ -106,7 +118,7 @@ def get_global_stats() -> GlobalStats:
     last_refreshed = str(rows[0].get("refreshed_at")) if rows else None
 
     return GlobalStats(
-        total_agencies=len(all_stats),
+        total_agencies=exact_count,
         total_requests=total_requests,
         total_completed=total_completed,
         total_rejected=total_rejected,
@@ -147,6 +159,7 @@ def get_agencies(
         query = (
             supabase.table("agency_stats_cache")
             .select("*", count="exact")
+            .eq("jurisdiction", "Federal")
             .gte("number_requests", min_requests)
         )
         if search:
@@ -159,6 +172,7 @@ def get_agencies(
         data_query = (
             supabase.table("agency_stats_cache")
             .select("*")
+            .eq("jurisdiction", "Federal")
             .gte("number_requests", min_requests)
             .order(sort_field, desc=not sort_asc)
             .range(offset, offset + page_size - 1)

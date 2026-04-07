@@ -154,13 +154,13 @@ export default function StateDetailPage() {
 
   // Outcome pie data
   const outcomePieData = [
-    { name: "Completed", value: Math.round((j.total_requests * j.overall_success_rate) / 100) || 0, color: "#059669" },
+    { name: "Completed", value: Math.round((j.total_requests * j.overall_success_rate) / 100) || 0, color: "#000000" },
     { name: "Rejected", value: detail.total_no_docs, color: "#dc2626" },
     { name: "No Responsive Docs", value: detail.total_no_docs, color: "#d97706" },
     { name: "Partial", value: detail.total_partial, color: "#f59e0b" },
-    { name: "Appealing", value: detail.total_appeal, color: "#7c3aed" },
-    { name: "Withdrawn", value: detail.total_withdrawn, color: "#6b7280" },
-    { name: "In Progress", value: detail.total_in_progress, color: "#3b82f6" },
+    { name: "Appealing", value: detail.total_appeal, color: "#475569" },
+    { name: "Withdrawn", value: detail.total_withdrawn, color: "#94a3b8" },
+    { name: "In Progress", value: detail.total_in_progress, color: "#1863dc" },
   ].filter((d) => d.value > 0);
 
   // Top agencies bar chart
@@ -248,7 +248,7 @@ export default function StateDetailPage() {
                     "Points",
                   ]}
                 />
-                <Bar dataKey="value" fill="var(--primary)" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="value" fill="var(--primary)" radius={[0, 4, 4, 0]} animationDuration={1200} animationEasing="ease-out" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -269,6 +269,8 @@ export default function StateDetailPage() {
                   outerRadius={90}
                   paddingAngle={2}
                   dataKey="value"
+                  animationDuration={1200}
+                  animationEasing="ease-out"
                 >
                   {outcomePieData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
@@ -296,7 +298,7 @@ export default function StateDetailPage() {
                   <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
                   <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}/100`, "Transparency Score"]} />
-                  <Bar dataKey="score" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="score" radius={[0, 4, 4, 0]} animationDuration={1200} animationEasing="ease-out">
                     {topBarData.map((entry, i) => (
                       <Cell key={i} fill={scoreColor(entry.score)} fillOpacity={0.85} />
                     ))}

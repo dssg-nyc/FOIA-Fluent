@@ -90,9 +90,9 @@ export default function Dashboard() {
     <main className="container">
       <div className="dashboard-header">
         <div>
-          <h1 className="dashboard-title">My FOIA Requests</h1>
+          <h1 className="dashboard-title">Track your records requests</h1>
           <p className="dashboard-subtitle">
-            Track submissions, monitor deadlines, and manage responses
+            Monitor deadlines, manage responses, and keep every request moving.
           </p>
         </div>
         <div className="dashboard-actions">

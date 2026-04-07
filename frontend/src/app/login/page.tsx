@@ -124,7 +124,7 @@ function LoginForm() {
           </div>
         )}
         <p className="login-subtitle">
-          Enter your email to receive a sign-in code. No password needed.
+          Enter your email to receive a sign-in code.
         </p>
         <form onSubmit={handleSendCode} className="login-form">
           <label htmlFor="email">Email address</label>

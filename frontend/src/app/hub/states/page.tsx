@@ -1,13 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   Tooltip,
   ResponsiveContainer,
   PieChart,
@@ -22,11 +18,9 @@ import {
 } from "react-simple-maps";
 import {
   fetchStateMapData,
-  fetchJurisdictionAgencies,
   StateMapData,
   JurisdictionSummary,
 } from "@/lib/jurisdiction-api";
-import { AgencyPageResponse } from "@/lib/hub-api";
 
 const GEO_URL = "/data/us-states-10m.json";
 
@@ -142,22 +136,19 @@ export default function DataHubPage() {
   // Pie chart data
   const pieData = data
     ? [
-        { name: "Completed", value: data.total_completed, color: "#059669" },
+        { name: "Completed", value: data.total_completed, color: "#000000" },
         { name: "Rejected", value: data.total_rejected, color: "#dc2626" },
         { name: "No Responsive Docs", value: data.total_no_docs, color: "#d97706" },
         { name: "Partial", value: data.total_partial, color: "#f59e0b" },
-        { name: "Appealing", value: data.total_appeal, color: "#7c3aed" },
-        { name: "Withdrawn", value: data.total_withdrawn, color: "#6b7280" },
-        { name: "In Progress", value: data.total_in_progress, color: "#3b82f6" },
+        { name: "Appealing", value: data.total_appeal, color: "#475569" },
+        { name: "Withdrawn", value: data.total_withdrawn, color: "#94a3b8" },
+        { name: "In Progress", value: data.total_in_progress, color: "#1863dc" },
       ].filter((d) => d.value > 0)
     : [];
 
-  // Bar chart data for top states
-  const topBarData = data?.top_states.slice(0, 10).map((s) => ({
-    name: s.name.length > 22 ? s.name.slice(0, 20) + "…" : s.name,
-    score: parseFloat(s.transparency_score.toFixed(1)),
-    slug: s.slug,
-  })) ?? [];
+  // Top states for ranked list
+  const topStates = data?.top_states.slice(0, 10) ?? [];
+  const maxTopStateScore = Math.max(...topStates.map((s) => s.transparency_score), 100);
 
   if (loading) {
     return (
@@ -218,23 +209,16 @@ export default function DataHubPage() {
 
         {/* ── Header ── */}
         <div className="header">
-          <h1>FOIA Transparency Hub</h1>
+          <h1>State & local public records transparency</h1>
           <p className="hub-header-subtitle">
-            <span className="hub-scope-badge">State & Local</span>
-            {" "}transparency data across{" "}
-            <strong>{data.states.length}</strong> state jurisdictions and{" "}
-            <strong>{data.total_state_agencies.toLocaleString()}</strong> agencies, sourced
-            from MuckRock&apos;s public FOIA database. Updated weekly.
+            Compare records access performance across <strong>{data.states.length}</strong> state jurisdictions and <strong>{data.total_state_agencies.toLocaleString()}</strong> agencies. Click any state to explore its agencies, success rates, and response patterns.
           </p>
-          {data.last_refreshed && (
-            <p className="hub-refresh-note">Last updated: {lastRefreshed}</p>
-          )}
           <div className="hub-header-cta">
             <Link href="/draft" className="hub-cta-primary">
-              Draft a FOIA Request
+              Draft a Request
             </Link>
             <a href="#state-directory" className="hub-cta-secondary">
-              Browse Agencies
+              Browse States
             </a>
           </div>
         </div>
@@ -344,6 +328,8 @@ export default function DataHubPage() {
                   outerRadius={90}
                   paddingAngle={2}
                   dataKey="value"
+                  animationDuration={1200}
+                  animationEasing="ease-out"
                 >
                   {pieData.map((entry, i) => (
                     <Cell key={i} fill={entry.color} />
@@ -362,25 +348,30 @@ export default function DataHubPage() {
             </div>
           </div>
 
-          {/* Top 10 States Bar Chart */}
+          {/* Top 10 States Ranked List */}
           <div className="hub-chart-card hub-chart-card-wide">
             <h3 className="hub-chart-title">Top 10 Most Transparent States</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart
-                layout="vertical"
-                data={topBarData}
-                margin={{ top: 4, right: 24, left: 8, bottom: 4 }}
-              >
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => [`${Number(v).toFixed(1)}/100`, "Transparency Score"]} />
-                <Bar dataKey="score" radius={[0, 4, 4, 0]}>
-                  {topBarData.map((entry, i) => (
-                    <Cell key={i} fill={scoreColor(entry.score)} fillOpacity={0.85} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="ranked-bar-list">
+              {topStates.map((state, i) => (
+                <Link
+                  key={state.id}
+                  href={`/hub/states/${state.slug}`}
+                  className="ranked-bar-item"
+                >
+                  <div className="ranked-bar-header">
+                    <span className="ranked-bar-rank">{i + 1}</span>
+                    <span className="ranked-bar-name">{state.name}</span>
+                    <span className="ranked-bar-score">{state.transparency_score.toFixed(1)}</span>
+                  </div>
+                  <div className="ranked-bar-track">
+                    <div
+                      className="ranked-bar-fill"
+                      style={{ width: `${(state.transparency_score / maxTopStateScore) * 100}%` }}
+                    />
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
         </div>
 
