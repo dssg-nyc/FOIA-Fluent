@@ -74,3 +74,56 @@ def set_my_personas(
     """Replace the current user's persona subscription set."""
     saved = signals_service.set_user_personas(user_id, payload.persona_ids)
     return UserPersonasResponse(persona_ids=saved)
+
+
+# ── Phase 1.5 — Entity Resolution Layer ─────────────────────────────────────
+
+@router.get("/{signal_id}/related")
+def get_related_signals(signal_id: str):
+    """Return signals that share at least one entity with the given signal.
+    Public — no auth required so the marketing landing page can use it."""
+    related = signals_service.find_related_signals(signal_id, limit=10)
+    return {"signals": related, "count": len(related)}
+
+
+@router.get("/entity/{entity_type}/{entity_slug}")
+def get_entity(entity_type: str, entity_slug: str):
+    """Get the cached entity bio + signal count.
+    Generates the bio with Claude on first hit, caches forever after."""
+    bio = signals_service.get_or_create_entity_bio(entity_type, entity_slug)
+    return bio
+
+
+@router.get("/entity/{entity_type}/{entity_slug}/signals")
+def get_entity_signals_route(entity_type: str, entity_slug: str, limit: int = 100):
+    """All signals across all sources that mention the given entity."""
+    signals = signals_service.get_entity_signals(entity_type, entity_slug, limit=limit)
+    return {"signals": signals, "count": len(signals)}
+
+
+# ── Phase 3.5 — Patterns Feed ───────────────────────────────────────────────
+
+@router.get("/patterns")
+def get_patterns_route(personas: Optional[str] = Query(default=None), limit: int = 50):
+    """Public AI-detected cross-source patterns. No auth required so the marketing
+    landing page can show them."""
+    persona_list: list[str] = []
+    if personas:
+        persona_list = [p.strip() for p in personas.split(",") if p.strip()]
+    patterns = signals_service.get_patterns(personas=persona_list or None, limit=limit)
+    return {"patterns": patterns, "count": len(patterns)}
+
+
+@router.get("/patterns/{pattern_id}")
+def get_pattern_detail(pattern_id: str):
+    """Pattern detail with all referenced signals fully expanded."""
+    return signals_service.get_pattern_with_signals(pattern_id)
+
+
+# ── Phase 2 — Public marketing landing page sample ──────────────────────────
+
+@router.get("/sample")
+def get_public_sample():
+    """PUBLIC (no auth). Returns a small curated sample for the marketing
+    landing page: top signal per persona, top patterns, and source coverage."""
+    return signals_service.get_public_sample(per_persona=1, max_patterns=3)

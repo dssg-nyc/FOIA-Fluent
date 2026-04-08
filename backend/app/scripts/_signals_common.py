@@ -12,9 +12,8 @@ relevance is concrete and verifiable. Speculative tagging is rejected.
 The 4 pilot personas (Phase 1):
     journalist | pharma_analyst | hedge_fund | environmental
 """
-import asyncio
-import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -26,6 +25,86 @@ PILOT_PERSONAS = ["journalist", "pharma_analyst", "hedge_fund", "environmental"]
 
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_MAX_TOKENS = 800
+
+
+# ── Entity slug normalization (Phase 1.5) ───────────────────────────────────
+
+# Strip only unambiguous legal entity suffixes — words like "group" or "holdings"
+# are often part of the actual company name (e.g. "WH Group", "Smithfield Holdings")
+# so we leave them in.
+_CORP_SUFFIX_PATTERN = (
+    r"\b(inc|incorporated|corp|corporation|llc|llp|lp|ltd|limited|plc|gmbh|nv)\b\.?"
+)
+_CORP_SUFFIX_RE = re.compile(_CORP_SUFFIX_PATTERN, re.IGNORECASE)
+_NON_SLUG_RE = re.compile(r"[^a-z0-9]+")
+_LEADING_TRAILING_DASH_RE = re.compile(r"^-+|-+$")
+
+# Generic placeholders that should NOT become entity slugs
+_GENERIC_VALUES = {
+    "member of public",
+    "individual",
+    "unknown",
+    "redacted",
+    "n/a",
+    "",
+}
+
+
+def normalize_entity_name(name: str) -> str:
+    """Normalize an entity name to a stable slug.
+    'Smithfield Foods, Inc.' → 'smithfield-foods'
+    'EPA Region 6'           → 'epa-region-6'
+    'Member of Public'       → '' (filtered out as generic)
+    """
+    if not name:
+        return ""
+    s = name.strip().lower()
+    if s in _GENERIC_VALUES:
+        return ""
+    s = _CORP_SUFFIX_RE.sub("", s)
+    s = _NON_SLUG_RE.sub("-", s)
+    s = _LEADING_TRAILING_DASH_RE.sub("", s)
+    # Drop very short or very long slugs as noise
+    if len(s) < 3 or len(s) > 80:
+        return ""
+    return s
+
+
+def build_entity_slugs(entities: dict, requester: str = "") -> list[str]:
+    """Build the flat array of '{type}:{slug}' entries for foia_signals_feed.entity_slugs.
+
+    Reads from the structured entities dict (companies/people/agencies/locations)
+    plus the requester field. Skips generic placeholders.
+    """
+    slugs: list[str] = []
+
+    def _add(entity_type: str, raw: str) -> None:
+        slug = normalize_entity_name(raw)
+        if not slug:
+            return
+        key = f"{entity_type}:{slug}"
+        if key not in slugs:
+            slugs.append(key)
+
+    if entities:
+        for company in (entities.get("companies") or []):
+            _add("company", str(company))
+        for person in (entities.get("people") or []):
+            _add("person", str(person))
+        for agency in (entities.get("agencies") or []):
+            _add("agency", str(agency))
+        for location in (entities.get("locations") or []):
+            _add("location", str(location))
+
+    if requester:
+        # Requester slugs into 'company' bucket if it looks like an org,
+        # else 'person'. Heuristic: contains 'LLC', 'Inc', or capitalized run.
+        if any(s in requester.lower() for s in (" llc", " llp", " inc", " corp", " ltd", "the ")):
+            _add("company", requester)
+        else:
+            _add("person", requester)
+
+    return slugs
 
 
 # ── Tool schema for forced structured output ────────────────────────────────
@@ -220,6 +299,7 @@ def upsert_signal(
         "ingested_at": datetime.now(timezone.utc).isoformat(),
         "agency_codes": agency_codes or [],
         "entities": entities or {},
+        "entity_slugs": build_entity_slugs(entities or {}, requester or ""),
         "persona_tags": persona_tags or [],
         "priority": int(priority or 0),
         "requester": (requester or "")[:300],
