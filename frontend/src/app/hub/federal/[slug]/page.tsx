@@ -144,7 +144,7 @@ export default function AgencyDetailPage() {
             <p>Agency not found in the transparency hub cache.</p>
             {error && <p className="hub-error-detail">{error}</p>}
             <Link href="/hub" className="hub-back-link">
-              ← Back to Data Hub
+              ← Back to Transparency Hub
             </Link>
           </div>
         </div>

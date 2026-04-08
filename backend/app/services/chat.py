@@ -113,7 +113,7 @@ TOOLS = [
     },
     {
         "name": "get_hub_stats",
-        "description": "Get transparency statistics from the Data Hub. Can search for a specific agency or return top-ranked agencies by transparency score.",
+        "description": "Get transparency statistics from the Transparency Hub. Can search for a specific agency or return top-ranked agencies by transparency score.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -179,11 +179,11 @@ def build_system_prompt(context: ChatContext, user_id: Optional[str] = None) -> 
 
 FOIA Fluent has 3 main features. ALWAYS guide users through these instead of giving generic FOIA advice:
 
-**1. Search & Draft (foiafluent.com/draft)**
+**1. Discover & Draft (foiafluent.com/draft)**
 - Users describe what records they want in plain English
 - Our AI identifies the right agency, researches similar requests on MuckRock, and generates a legally optimized FOIA letter
 - The draft includes proper legal citations, fee waiver requests, and format preferences
-- When a user wants to file a request, ALWAYS say: "Let's draft that — head to the **Search & Draft** tab and describe what records you're looking for. I can help you refine your description."
+- When a user wants to file a request, ALWAYS say: "Let's draft that — head to the **Discover & Draft** tab and describe what records you're looking for. I can help you refine your description."
 
 **2. My Requests (foiafluent.com/dashboard)**
 - After drafting, users save and track their requests here
@@ -192,19 +192,19 @@ FOIA Fluent has 3 main features. ALWAYS guide users through these instead of giv
 - It also generates follow-up and appeal letters automatically
 - When a user has filed a request, say: "Log it in **My Requests** so we can track your deadline and help if the agency responds with a denial."
 
-**3. Data Hub (foiafluent.com/hub)**
+**3. Transparency Hub (foiafluent.com/hub)**
 - Transparency data on 1,600+ federal and state agencies
 - Transparency scores, success rates, response times, exemption patterns
 - Insights tab with FOIA trends from FY 2008-2024
-- When a user asks about an agency's track record, use the lookup_agency or get_hub_stats tools AND mention they can explore more in the Data Hub.
+- When a user asks about an agency's track record, use the lookup_agency or get_hub_stats tools AND mention they can explore more in the Transparency Hub.
 
 ## HOW TO GUIDE USERS THROUGH THE TOOL
 
-- If someone wants to file a request → direct them to Search & Draft
+- If someone wants to file a request → direct them to Discover & Draft
 - If someone has already filed → direct them to My Requests to track it
 - If someone got a response → tell them to upload it in My Requests for AI analysis
 - If someone got denied → explain they can generate an appeal letter in My Requests
-- If someone is researching → use your tools, but also point them to the Data Hub
+- If someone is researching → use your tools, but also point them to the Transparency Hub
 - NEVER tell users to email agencies directly when they could use our draft tool instead
 - ALWAYS frame advice in terms of what FOIA Fluent can do for them
 
@@ -251,7 +251,7 @@ You have the lookup_exemption tool for detailed info. Quick reference:
 
     # Add page-specific context
     if context.page == "draft":
-        base += "\n## CURRENT CONTEXT: User is on the Search & Draft page.\nThey're actively working on a FOIA request. Help them describe their records clearly, pick the right agency, and refine their scope. They can type their request description in the search box on this page and our AI will draft it."
+        base += "\n## CURRENT CONTEXT: User is on the Discover & Draft page.\nThey're actively working on a FOIA request. Help them describe their records clearly, pick the right agency, and refine their scope. They can type their request description in the search box on this page and our AI will draft it."
         if context.draft_data:
             base += f"\nCurrent draft info: {json.dumps(context.draft_data)[:500]}"
 
@@ -259,10 +259,10 @@ You have the lookup_exemption tool for detailed info. Quick reference:
         base += f"\n## CURRENT CONTEXT: User is viewing a tracked request (ID: {context.request_id}).\nThey may need help understanding an agency response, deciding whether to appeal, or writing a follow-up. Use search_requests to pull up the request details. Remind them they can upload agency responses for AI analysis and generate appeal/follow-up letters directly from this page."
 
     elif context.page == "dashboard":
-        base += "\n## CURRENT CONTEXT: User is on the My Requests dashboard.\nThey're managing their tracked FOIA requests. Help them understand statuses, deadlines, and next steps. If they want to file a new request, direct them to Search & Draft."
+        base += "\n## CURRENT CONTEXT: User is on the My Requests dashboard.\nThey're managing their tracked FOIA requests. Help them understand statuses, deadlines, and next steps. If they want to file a new request, direct them to Discover & Draft."
 
     elif context.page in ("hub", "states", "insights"):
-        base += "\n## CURRENT CONTEXT: User is browsing the Data Hub.\nHelp them understand transparency data, agency scores, and FOIA trends. Use get_hub_stats and lookup_agency for data. If they want to file a request based on what they see, direct them to Search & Draft."
+        base += "\n## CURRENT CONTEXT: User is browsing the Transparency Hub.\nHelp them understand transparency data, agency scores, and FOIA trends. Use get_hub_stats and lookup_agency for data. If they want to file a request based on what they see, direct them to Discover & Draft."
 
     # Add fallback resources
     base += """

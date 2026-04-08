@@ -28,9 +28,9 @@ export default function Footer() {
           <div className="footer-col">
             <div className="footer-col-title">Product</div>
             <ul className="footer-links">
-              <li><Link href="/hub" className="footer-link">Data Hub</Link></li>
+              <li><Link href="/hub" className="footer-link">Transparency Hub</Link></li>
               <li><Link href="/hub/insights" className="footer-link">Insights</Link></li>
-              <li><Link href="/draft" className="footer-link">Search & Draft</Link></li>
+              <li><Link href="/draft" className="footer-link">Discover & Draft</Link></li>
               <li><Link href="/dashboard" className="footer-link">My Requests</Link></li>
             </ul>
           </div>

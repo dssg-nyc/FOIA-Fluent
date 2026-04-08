@@ -300,7 +300,7 @@ def get_hub_stats(query: str = "") -> dict:
             )
             return {
                 "results": result.data or [],
-                "source": "FOIA Fluent Data Hub (MuckRock data)",
+                "source": "FOIA Fluent Transparency Hub (MuckRock data)",
             }
         else:
             # General stats
@@ -314,7 +314,7 @@ def get_hub_stats(query: str = "") -> dict:
             )
             return {
                 "top_agencies": result.data or [],
-                "source": "FOIA Fluent Data Hub — top agencies by transparency score",
+                "source": "FOIA Fluent Transparency Hub — top agencies by transparency score",
             }
     except Exception as e:
         logger.error(f"Hub stats query failed: {e}")

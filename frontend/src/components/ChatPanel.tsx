@@ -120,7 +120,7 @@ export default function ChatPanel() {
             search_web: "Searching trusted sources...",
             search_web_broad: "Researching deeper...",
             search_requests: "Checking your requests...",
-            get_hub_stats: "Querying Data Hub...",
+            get_hub_stats: "Querying Transparency Hub...",
             search_muckrock: "Searching MuckRock...",
           };
           if (event.status === "running") {

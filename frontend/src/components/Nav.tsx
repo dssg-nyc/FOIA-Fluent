@@ -43,13 +43,13 @@ export default function Nav() {
             href="/hub"
             className={`nav-link ${pathname.startsWith("/hub") ? "nav-link-active" : ""}`}
           >
-            Data Hub
+            Transparency Hub
           </Link>
           <Link
             href="/draft"
             className={`nav-link ${pathname === "/draft" ? "nav-link-active" : ""}`}
           >
-            Search & Draft
+            Discover & Draft
           </Link>
           <Link
             href="/dashboard"
