@@ -300,7 +300,7 @@ def get_hub_stats(query: str = "") -> dict:
             )
             return {
                 "results": result.data or [],
-                "source": "FOIA Fluent Data Hub (MuckRock data)",
+                "source": "FOIA Fluent Transparency Hub (MuckRock data)",
             }
         else:
             # General stats
@@ -314,7 +314,7 @@ def get_hub_stats(query: str = "") -> dict:
             )
             return {
                 "top_agencies": result.data or [],
-                "source": "FOIA Fluent Data Hub — top agencies by transparency score",
+                "source": "FOIA Fluent Transparency Hub — top agencies by transparency score",
             }
     except Exception as e:
         logger.error(f"Hub stats query failed: {e}")
@@ -326,3 +326,105 @@ def get_hub_stats(query: str = "") -> dict:
 async def search_muckrock(query: str) -> dict:
     """Search MuckRock for similar FOIA requests and outcomes."""
     return await search_web(f"site:muckrock.com {query}", trusted_only=False)
+
+
+# ── Tool: search_my_discoveries (Discover & Draft saved library) ─────────────
+
+def search_my_discoveries(
+    user_id: str,
+    query: str = "",
+    status: str = "",
+    tag: str = "",
+    days: int = 30,
+) -> dict:
+    """Search the user's saved discoveries library. READ-ONLY.
+
+    Returns documents the user has bookmarked from the Discover & Draft search,
+    optionally filtered by free-text query (title/description/note), status, tag,
+    or recency window in days.
+    """
+    if not user_id:
+        return {
+            "discoveries": [],
+            "message": "Not signed in. Sign in and save discoveries from the Discover & Draft tab to use this.",
+        }
+    try:
+        from app.services.discoveries import search_my_discoveries_for_chat
+        rows = search_my_discoveries_for_chat(
+            user_id=user_id, query=query, status=status, tag=tag, days=days, limit=10
+        )
+        if not rows:
+            return {
+                "discoveries": [],
+                "message": "No saved discoveries match. Save documents from the Discover & Draft tab to build your library.",
+            }
+        return {
+            "discoveries": rows,
+            "count": len(rows),
+            "source": "Your saved discoveries library (My Discoveries)",
+        }
+    except Exception as e:
+        logger.error(f"search_my_discoveries failed: {e}")
+        return {"discoveries": [], "message": f"Error: {e}"}
+
+
+# ── Tool: read_saved_document (Discover & Draft saved library) ──────────────
+
+async def read_saved_document(user_id: str, document_id: str = "", title_or_url: str = "") -> dict:
+    """Fetch a single saved document by ID (preferred), title, or URL.
+    Returns the AI-generated summary, the user's own note, and (when possible)
+    the FULL extracted text content from the source URL via Tavily extract.
+    READ-ONLY.
+
+    IMPORTANT: If you have the document's `id` from a previous
+    search_my_discoveries call, always pass it as `document_id` — this
+    guarantees an exact match. Only fall back to title_or_url when you
+    don't have the ID.
+    """
+    if not user_id:
+        return {
+            "error": "Not signed in.",
+            "hint": "Sign in to access your saved discoveries library.",
+        }
+    if not document_id and not title_or_url:
+        return {
+            "error": "Need a document ID, title, or URL to look up.",
+            "hint": "Pass the document_id from search_my_discoveries, or a title/URL.",
+        }
+    try:
+        from app.services.discoveries import read_saved_document_for_chat
+        return await read_saved_document_for_chat(
+            user_id=user_id,
+            document_id=document_id,
+            title_or_url=title_or_url,
+        )
+    except Exception as e:
+        logger.error(f"read_saved_document failed: {e}")
+        return {"error": str(e)}
+
+
+# ── Tool: get_recent_signals (Live FOIA Signals) ────────────────────────────
+
+def get_recent_signals(persona: str = "", query: str = "", days: int = 7) -> dict:
+    """Get recent items from the Live FOIA Signals feed.
+
+    Filters by optional persona ("journalist", "pharma_analyst", "hedge_fund",
+    "environmental"), optional keyword (matched in title/summary), and a recency
+    window in days. READ-ONLY.
+    """
+    from app.services.signals import get_recent_signals_for_chat
+    try:
+        rows = get_recent_signals_for_chat(persona=persona, query=query, days=days, limit=10)
+        if not rows:
+            return {
+                "signals": [],
+                "message": "No signals matched. The Live FOIA Signals feed updates from GAO bid protests, EPA ECHO enforcement, FDA Warning Letters, and DHS FOIA logs.",
+            }
+        return {
+            "signals": rows,
+            "count": len(rows),
+            "source": "FOIA Fluent Live Signals feed (foia_signals_feed)",
+        }
+    except Exception as e:
+        logger.error(f"get_recent_signals failed: {e}")
+        return {"signals": [], "message": f"Error: {e}"}

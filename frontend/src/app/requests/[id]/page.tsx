@@ -14,6 +14,7 @@ import {
   Communication,
   ResponseAnalysis,
 } from "@/lib/tracking-api";
+import { fetchMyDiscoveries, type DiscoveredDocument } from "@/lib/discoveries-api";
 import AuthGuard from "@/components/AuthGuard";
 import ConfirmModal from "@/components/ConfirmModal";
 
@@ -490,6 +491,9 @@ export default function RequestDetail() {
         </div>
       )}
 
+      {/* ── Linked Discoveries (saved documents the user has linked to this request) ── */}
+      <LinkedDiscoveriesSection requestId={id} />
+
       {/* ── Research Context (collapsed by default) ── */}
       <div className="research-context">
         <button
@@ -514,6 +518,69 @@ export default function RequestDetail() {
 
     </main>
     </AuthGuard>
+  );
+}
+
+/** Saved discoveries linked to this tracked request. Pulled live from the
+ * discovered_documents library and filtered server-side by tracked_request_id. */
+function LinkedDiscoveriesSection({ requestId }: { requestId: string }) {
+  const [docs, setDocs] = useState<DiscoveredDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMyDiscoveries({ tracked_request_id: requestId })
+      .then((res) => setDocs(res.discoveries))
+      .catch(() => setDocs([]))
+      .finally(() => setLoading(false));
+  }, [requestId]);
+
+  if (loading || docs.length === 0) return null;
+
+  const sourceLabels: Record<string, string> = {
+    muckrock: "MuckRock",
+    documentcloud: "DocumentCloud",
+    web: "Web",
+  };
+
+  return (
+    <div className="research-context">
+      <h3 className="research-context-title">Linked discoveries ({docs.length})</h3>
+      <p className="research-context-subtitle">
+        Documents you saved from your research and linked to this request.
+      </p>
+      <ul className="discover-rows">
+        {docs.map((d) => (
+          <li key={d.id}>
+            <a
+              href={d.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="discover-row"
+              style={{ textDecoration: "none" }}
+            >
+              <span className="discover-row-headline">{d.title}</span>
+              <span className="discover-row-meta">
+                <span className="discover-row-source">
+                  {sourceLabels[d.source] || d.source}
+                </span>
+                {d.agency && (
+                  <>
+                    <span className="discover-row-meta-dot">·</span>
+                    <span>{d.agency}</span>
+                  </>
+                )}
+                {d.note && (
+                  <>
+                    <span className="discover-row-meta-dot">·</span>
+                    <span>Note: {d.note.slice(0, 80)}{d.note.length > 80 ? "…" : ""}</span>
+                  </>
+                )}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
