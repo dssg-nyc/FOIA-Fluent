@@ -364,3 +364,77 @@ CREATE INDEX IF NOT EXISTS idx_patterns_personas ON signal_patterns USING GIN (p
 CREATE INDEX IF NOT EXISTS idx_patterns_entities ON signal_patterns USING GIN (entity_slugs);
 CREATE INDEX IF NOT EXISTS idx_patterns_generated ON signal_patterns (generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_patterns_visible ON signal_patterns (visible) WHERE visible = TRUE;
+
+-- ── Discover & Draft — Phase 3 (Saved Discoveries) ────────────────────────────
+-- Persistent per-user library of documents discovered via the /draft search.
+-- Each row is one document the user explicitly saved from the discovery results
+-- (or directly from the search detail pane). Optionally linked back to a tracked
+-- request so research and filing live next to each other.
+
+CREATE TABLE IF NOT EXISTS discovered_documents (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    -- Source data captured at save time
+    source          TEXT NOT NULL,        -- "muckrock" | "documentcloud" | "web"
+    source_id       TEXT,                 -- upstream identifier when available
+    title           TEXT NOT NULL,
+    description     TEXT DEFAULT '',
+    url             TEXT NOT NULL,
+    -- Optional metadata
+    document_date   DATE,
+    page_count      INT,
+    agency          TEXT DEFAULT '',
+    -- User state
+    status          TEXT DEFAULT 'saved', -- "saved" | "reviewed" | "useful" | "not_useful"
+    note            TEXT DEFAULT '',
+    tags            TEXT[] DEFAULT '{}',
+    -- Linkage
+    tracked_request_id  UUID REFERENCES tracked_requests(id) ON DELETE SET NULL,
+    -- Provenance
+    discovered_via_query TEXT,            -- the original search query
+    saved_at        TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (user_id, url)                 -- prevent duplicate saves of the same URL
+);
+
+ALTER TABLE discovered_documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_discoveries" ON discovered_documents
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_discoveries_user ON discovered_documents (user_id);
+CREATE INDEX IF NOT EXISTS idx_discoveries_status ON discovered_documents (user_id, status);
+CREATE INDEX IF NOT EXISTS idx_discoveries_request ON discovered_documents (tracked_request_id);
+CREATE INDEX IF NOT EXISTS idx_discoveries_tags ON discovered_documents USING GIN (tags);
+
+-- ── Discover & Draft — Phase 4 (Saved Searches) ───────────────────────────────
+-- User-saved discovery queries. The "Recent" section of the sidebar reads from
+-- this table so a researcher can jump back into prior queries from anywhere.
+-- Idempotent on (user_id, normalized query) — repeated saves update last_run_at
+-- + last_result_count rather than creating duplicates.
+
+CREATE TABLE IF NOT EXISTS saved_searches (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id            UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    query              TEXT NOT NULL,
+    interpretation     JSONB DEFAULT '{}',   -- cached AI parse for display (agency, record_types)
+    name               TEXT DEFAULT '',      -- optional user-given label
+    last_run_at        TIMESTAMPTZ DEFAULT NOW(),
+    last_result_count  INT DEFAULT 0,
+    created_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE saved_searches ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_saved_searches" ON saved_searches
+    FOR ALL USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_saved_searches_user
+    ON saved_searches (user_id, last_run_at DESC);
+
+-- Cached discovery result snapshot so clicking a saved search from the sidebar
+-- can hydrate instantly instead of re-running the full Claude+MuckRock+Tavily
+-- discovery pipeline. The user can press "Refresh" in the UI to re-run and
+-- overwrite. Nullable because older rows pre-date this column.
+ALTER TABLE saved_searches
+    ADD COLUMN IF NOT EXISTS result_snapshot JSONB DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS snapshot_at     TIMESTAMPTZ DEFAULT NULL;

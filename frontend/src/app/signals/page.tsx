@@ -115,7 +115,7 @@ function PatternsShowcase({ patterns }: { patterns: SignalPattern[] }) {
       <div className="signals-landing-section-header">
         <span className="signals-eyebrow">AI intelligence briefing</span>
         <h2 className="signals-landing-section-title">
-          Patterns the AI already found this week
+          Patterns found this week
         </h2>
         <p className="signals-landing-section-sub">
           An AI analyst reads every signal across all four sources and surfaces non-obvious

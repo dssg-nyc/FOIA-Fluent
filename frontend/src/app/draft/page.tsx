@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   discover,
   generateDraft,
@@ -15,6 +15,8 @@ import {
   AgencyIntel,
 } from "@/lib/api";
 import { trackRequest } from "@/lib/tracking-api";
+import { saveDiscovery, type DiscoveryStatus } from "@/lib/discoveries-api";
+import { saveSearch, fetchSavedSearch } from "@/lib/saved-searches-api";
 import { supabase } from "@/lib/supabase";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -39,6 +41,23 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const seconds = Math.max(0, Math.floor((now - then) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 type DraftPhase =
   | "idle"
   | "identifying"
@@ -48,11 +67,47 @@ type DraftPhase =
   | "review-draft";
 
 export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <main className="container-wide draft-main">
+          <div className="discover-loading-card">
+            <div className="discover-loading-eyebrow">Loading</div>
+            <h2 className="discover-loading-title">Preparing your workspace</h2>
+          </div>
+        </main>
+      }
+    >
+      <HomeInner />
+    </Suspense>
+  );
+}
+
+function HomeInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Restore search state from sessionStorage so navigating away + back
+  // doesn't erase the user's search results.
+  const STORAGE_KEY = "foiafluent.draft.searchState";
+
   const [query, setQuery] = useState("");
   const [data, setData] = useState<DiscoveryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  // Persist search state whenever it changes (only after hydration so we
+  // don't overwrite on the mount that reads it).
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ query, data }),
+      );
+    } catch { /* sessionStorage full or unavailable — ignore */ }
+  }, [query, data, hydrated]);
 
   // Draft wizard state
   const [draftPhase, setDraftPhase] = useState<DraftPhase>("idle");
@@ -72,13 +127,13 @@ export default function Home() {
   const [expedited, setExpedited] = useState(false);
   const [preferredFormat, setPreferredFormat] = useState("electronic");
 
-  async function handleSearch() {
-    if (!query.trim()) return;
+  async function runSearchWith(q: string) {
+    if (!q.trim()) return;
     setIsLoading(true);
     setError(null);
     resetDraft();
     try {
-      const result = await discover(query.trim());
+      const result = await discover(q.trim());
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
@@ -87,6 +142,141 @@ export default function Home() {
       setIsLoading(false);
     }
   }
+
+  async function handleSearch() {
+    return runSearchWith(query);
+  }
+
+  // Save-search state
+  const [searchSavedAt, setSearchSavedAt] = useState<number | null>(null);
+  const [isSavingSearch, setIsSavingSearch] = useState(false);
+  const [searchSaveError, setSearchSaveError] = useState<string | null>(null);
+  const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
+  const [savedSearchId, setSavedSearchId] = useState<string | null>(null);
+
+  async function handleSaveSearch() {
+    if (!data || !query.trim()) return;
+    setIsSavingSearch(true);
+    setSearchSaveError(null);
+    try {
+      const resultCount = (data.steps || []).reduce(
+        (acc, s) => acc + (s.results?.length || 0),
+        0,
+      );
+      const saved = await saveSearch({
+        query: query.trim(),
+        interpretation: {
+          intent: data.intent,
+          agencies: data.agencies,
+          record_types: data.record_types,
+        },
+        result_count: resultCount,
+        // Snapshot the full DiscoveryResponse so clicking this saved search
+        // from the sidebar re-opens instantly without re-running discovery.
+        result_snapshot: data as unknown as Record<string, unknown>,
+      });
+      setSavedSearchId(saved.id);
+      setSnapshotAt(saved.snapshot_at);
+      setSearchSavedAt(Date.now());
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("foiafluent.saved-search-changed"));
+      }
+      setTimeout(() => setSearchSavedAt(null), 2500);
+    } catch (e) {
+      setSearchSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setIsSavingSearch(false);
+    }
+  }
+
+  async function handleRefreshSearch() {
+    if (!query.trim()) return;
+    await runSearchWith(query);
+    // If this search came from a saved row, re-save to update the snapshot.
+    if (savedSearchId) {
+      // Need the fresh `data`, but setState is async — so we re-use the
+      // updated state via a follow-up effect below.
+    }
+  }
+
+  // When the user refreshes a loaded-from-snapshot search and it finishes,
+  // automatically update the snapshot on the saved row.
+  useEffect(() => {
+    if (!savedSearchId || !data) return;
+    if (isLoading) return;
+    // Only auto-update if this `data` has different content than the current
+    // snapshot_at — avoid re-saving unchanged data.
+    const resultCount = (data.steps || []).reduce(
+      (acc, s) => acc + (s.results?.length || 0),
+      0,
+    );
+    saveSearch({
+      query: query.trim(),
+      interpretation: {
+        intent: data.intent,
+        agencies: data.agencies,
+        record_types: data.record_types,
+      },
+      result_count: resultCount,
+      result_snapshot: data as unknown as Record<string, unknown>,
+    })
+      .then((saved) => {
+        setSnapshotAt(saved.snapshot_at);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("foiafluent.saved-search-changed"));
+        }
+      })
+      .catch(() => { /* ignore — refresh is best-effort */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  // On mount, in priority order:
+  //   1. ?id=<uuid>  → hydrate from saved_searches.result_snapshot (instant)
+  //   2. ?q=<query>  → run a fresh discovery pipeline
+  //   3. sessionStorage → restore prior in-session state
+  useEffect(() => {
+    const urlId = searchParams.get("id");
+    const urlQuery = searchParams.get("q");
+
+    if (urlId) {
+      fetchSavedSearch(urlId)
+        .then((saved) => {
+          setSavedSearchId(saved.id);
+          setSnapshotAt(saved.snapshot_at);
+          setQuery(saved.query);
+          if (saved.result_snapshot) {
+            setData(saved.result_snapshot as unknown as DiscoveryResponse);
+          } else {
+            // Older rows with no snapshot — fall back to re-running.
+            runSearchWith(saved.query);
+          }
+        })
+        .catch(() => {
+          if (urlQuery && urlQuery.trim()) {
+            setQuery(urlQuery);
+            runSearchWith(urlQuery);
+          }
+        })
+        .finally(() => setHydrated(true));
+      return;
+    }
+
+    if (urlQuery && urlQuery.trim()) {
+      setQuery(urlQuery);
+      runSearchWith(urlQuery);
+    } else {
+      try {
+        const raw = sessionStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw);
+          if (saved.query) setQuery(saved.query);
+          if (saved.data) setData(saved.data);
+        }
+      } catch { /* ignore */ }
+    }
+    setHydrated(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function resetDraft() {
     setDraftPhase("idle");
@@ -236,7 +426,7 @@ export default function Home() {
   }
 
   return (
-    <main className="container">
+    <main className="container-wide draft-main">
       <header className="header">
         <h1>Find records. Draft requests.</h1>
         <p>
@@ -255,9 +445,9 @@ export default function Home() {
         <textarea
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Describe what you're looking for in plain language."
+          placeholder="Describe what you're looking for in plain language. Example: FDA inspection records of vaccine manufacturers since 2023."
           className="search-textarea"
-          rows={3}
+          rows={5}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -272,6 +462,7 @@ export default function Home() {
 
       {isLoading && (
         <ProgressStepper
+          title="Searching federal, state, and local public records"
           steps={[
             "Understanding your request",
             "Identifying the best agency",
@@ -309,6 +500,46 @@ export default function Home() {
                   </span>
                 ))}
               </div>
+            )}
+            {savedSearchId ? (
+              <div className="search-snapshot-bar">
+                <span className="search-snapshot-meta">
+                  Saved · captured {formatRelativeTime(snapshotAt)}
+                </span>
+                <button
+                  type="button"
+                  className="search-refresh-btn"
+                  onClick={handleRefreshSearch}
+                  disabled={isLoading}
+                  title="Re-run the discovery pipeline and update the snapshot"
+                >
+                  {isLoading ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={`draft-button save-search-btn ${searchSavedAt ? "save-search-btn-saved" : ""}`}
+                onClick={handleSaveSearch}
+                disabled={isSavingSearch || !!searchSavedAt}
+                title="Save this query to revisit from the Saved Searches list"
+              >
+                {searchSavedAt ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Saved
+                  </>
+                ) : isSavingSearch ? (
+                  "Saving…"
+                ) : (
+                  "Save this search"
+                )}
+              </button>
+            )}
+            {searchSaveError && (
+              <div className="save-search-error">{searchSaveError}</div>
             )}
           </div>
 
@@ -358,6 +589,7 @@ export default function Home() {
 
           {draftPhase === "generating" && (
             <ProgressStepper
+              title="Drafting your FOIA request"
               steps={[
                 "Researching similar FOIA requests on this topic",
                 "Analyzing this agency's FOIA track record",
@@ -378,10 +610,8 @@ export default function Home() {
             />
           )}
 
-          {/* Discovery steps */}
-          {data.steps.map((step) => (
-            <StepSection key={step.step} step={step} />
-          ))}
+          {/* Three-pane discovery results — left filter rail, middle compact rows, right preview pane */}
+          <DiscoveryResults steps={data.steps} query={data.query} />
         </div>
       )}
     </main>
@@ -391,9 +621,11 @@ export default function Home() {
 /* --- Progress Stepper --- */
 
 function ProgressStepper({
+  title,
   steps,
   intervalMs,
 }: {
+  title: string;
   steps: string[];
   intervalMs: number;
 }) {
@@ -406,30 +638,29 @@ function ProgressStepper({
   }, [activeStep, steps.length, intervalMs]);
 
   return (
-    <div className="progress-stepper">
-      {steps.map((label, i) => (
-        <div
-          key={i}
-          className={`progress-step ${
-            i < activeStep
-              ? "step-done"
-              : i === activeStep
-                ? "step-active"
-                : "step-pending"
-          }`}
-        >
-          <div className="progress-indicator">
-            {i < activeStep ? (
-              <span className="progress-check">&#10003;</span>
-            ) : i === activeStep ? (
-              <span className="progress-spinner" />
-            ) : (
-              <span className="progress-dot" />
-            )}
-          </div>
-          <span className="progress-label">{label}</span>
-        </div>
-      ))}
+    <div className="discover-loading-card">
+      <div className="discover-loading-eyebrow">Working on it</div>
+      <h2 className="discover-loading-title">{title}</h2>
+      <ol className="discover-loading-steps">
+        {steps.map((label, i) => {
+          const state =
+            i < activeStep ? "done" : i === activeStep ? "active" : "pending";
+          return (
+            <li key={i} className={`discover-loading-step discover-loading-step-${state}`}>
+              <span className="discover-loading-indicator" aria-hidden="true">
+                {state === "done" ? (
+                  <span className="discover-loading-check">&#10003;</span>
+                ) : state === "active" ? (
+                  <span className="discover-loading-spinner" />
+                ) : (
+                  <span className="discover-loading-dot" />
+                )}
+              </span>
+              <span className="discover-loading-label">{label}</span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -947,63 +1178,517 @@ function DraftReview({
 
 /* --- Discovery components --- */
 
-function StepSection({ step }: { step: DiscoveryStep }) {
-  const icon = step.step === 1 ? "1" : "2";
+/* --- Three-pane Discovery Results --- */
+
+type SortKey = "relevance" | "newest" | "pages";
+
+function yearBucket(dateStr: string | null): "2024-25" | "2020-23" | "older" | "unknown" {
+  if (!dateStr) return "unknown";
+  const y = new Date(dateStr).getUTCFullYear();
+  if (Number.isNaN(y)) return "unknown";
+  if (y >= 2024) return "2024-25";
+  if (y >= 2020) return "2020-23";
+  return "older";
+}
+
+function DiscoveryResults({
+  steps,
+  query,
+}: {
+  steps: DiscoveryStep[];
+  query: string;
+}) {
+  // Flatten all results across steps into one searchable list. Each result keeps
+  // its source so we can badge + filter by source in the rail.
+  const allResults: SearchResult[] = useMemo(
+    () => steps.flatMap((s) => s.results || []),
+    [steps],
+  );
+
+  // Tracked requests for the "Link to" dropdown in the detail pane.
+  // Lazy-loaded once on mount; ignored on failure.
+  const [trackedRequests, setTrackedRequests] = useState<
+    { id: string; title: string }[]
+  >([]);
+  useEffect(() => {
+    import("@/lib/tracking-api")
+      .then((m) => m.listRequests())
+      .then((rs) =>
+        setTrackedRequests(
+          (rs || []).map((r) => ({
+            id: r.request.id,
+            title: r.request.title || `Request ${r.request.id.slice(0, 8)}`,
+          })),
+        ),
+      )
+      .catch(() => setTrackedRequests([]));
+  }, []);
+
+  const [selectedId, setSelectedId] = useState<string | null>(
+    allResults.length > 0 ? allResults[0].id : null,
+  );
+  const [sourceFilter, setSourceFilter] = useState<string[]>([]);
+  const [yearFilter, setYearFilter] = useState<string[]>([]);
+  const [sortKey, setSortKey] = useState<SortKey>("relevance");
+
+  // Source counts (from the unfiltered set, so the rail always shows the totals)
+  const sourceCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of allResults) m[r.source] = (m[r.source] || 0) + 1;
+    return m;
+  }, [allResults]);
+
+  // Year bucket counts (also unfiltered)
+  const yearCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of allResults) {
+      const b = yearBucket(r.date);
+      m[b] = (m[b] || 0) + 1;
+    }
+    return m;
+  }, [allResults]);
+
+  // Apply filters + sort
+  const visible = useMemo(() => {
+    let arr = allResults;
+    if (sourceFilter.length > 0) {
+      arr = arr.filter((r) => sourceFilter.includes(r.source));
+    }
+    if (yearFilter.length > 0) {
+      arr = arr.filter((r) => yearFilter.includes(yearBucket(r.date)));
+    }
+    if (sortKey === "newest") {
+      arr = [...arr].sort((a, b) => {
+        const ad = a.date ? new Date(a.date).getTime() : 0;
+        const bd = b.date ? new Date(b.date).getTime() : 0;
+        return bd - ad;
+      });
+    } else if (sortKey === "pages") {
+      arr = [...arr].sort((a, b) => (b.page_count || 0) - (a.page_count || 0));
+    }
+    return arr;
+  }, [allResults, sourceFilter, yearFilter, sortKey]);
+
+  // Keep selection valid as filters change
+  useEffect(() => {
+    if (visible.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !visible.find((r) => r.id === selectedId)) {
+      setSelectedId(visible[0].id);
+    }
+  }, [visible, selectedId]);
+
+  const selected = visible.find((r) => r.id === selectedId) || null;
+
+  function toggleSource(s: string) {
+    setSourceFilter((prev) =>
+      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
+    );
+  }
+  function toggleYear(y: string) {
+    setYearFilter((prev) =>
+      prev.includes(y) ? prev.filter((x) => x !== y) : [...prev, y],
+    );
+  }
+
+  if (allResults.length === 0) {
+    return (
+      <div className="discover-empty">
+        No public records found yet. You can still draft a FOIA request below.
+      </div>
+    );
+  }
 
   return (
-    <div className={`step-section ${step.found ? "step-found" : "step-empty"}`}>
-      <div className="step-header">
-        <span className="step-number">{icon}</span>
-        <div>
-          <h3>{step.title}</h3>
-          <p className="step-description">{step.description}</p>
+    <div className="discover-three-pane">
+      {/* LEFT RAIL */}
+      <aside className="discover-rail">
+        <div className="discover-rail-section">
+          <div className="discover-rail-label">Sources</div>
+          <ul className="discover-rail-list">
+            {Object.entries(sourceCounts).map(([source, count]) => {
+              const active = sourceFilter.includes(source);
+              return (
+                <li key={source}>
+                  <button
+                    type="button"
+                    className={`discover-rail-btn ${active ? "discover-rail-btn-active" : ""}`}
+                    onClick={() => toggleSource(source)}
+                  >
+                    <span className="discover-rail-btn-name">
+                      {SOURCE_LABELS[source] || source}
+                    </span>
+                    <span className="discover-rail-btn-count">{count}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-        <span className={`step-badge ${step.found ? "found" : "not-found"}`}>
-          {step.found ? `${step.results.length} found` : "None found"}
-        </span>
-      </div>
 
-      {step.results.length > 0 && (
-        <ul className="results-list">
-          {step.results.map((r) => (
-            <ResultCard key={r.id} result={r} />
+        {Object.keys(yearCounts).length > 1 && (
+          <div className="discover-rail-section">
+            <div className="discover-rail-label">Year</div>
+            <ul className="discover-rail-list">
+              {[
+                { key: "2024-25", label: "2024 – 2025" },
+                { key: "2020-23", label: "2020 – 2023" },
+                { key: "older", label: "Before 2020" },
+                { key: "unknown", label: "No date" },
+              ].map(({ key, label }) => {
+                const count = yearCounts[key] || 0;
+                if (count === 0) return null;
+                const active = yearFilter.includes(key);
+                return (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      className={`discover-rail-btn ${active ? "discover-rail-btn-active" : ""}`}
+                      onClick={() => toggleYear(key)}
+                    >
+                      <span className="discover-rail-btn-name">{label}</span>
+                      <span className="discover-rail-btn-count">{count}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
+        <div className="discover-rail-section">
+          <div className="discover-rail-label">Sort</div>
+          <ul className="discover-rail-list">
+            {[
+              { key: "relevance" as SortKey, label: "Relevance" },
+              { key: "newest" as SortKey, label: "Newest first" },
+              { key: "pages" as SortKey, label: "Most pages" },
+            ].map(({ key, label }) => (
+              <li key={key}>
+                <button
+                  type="button"
+                  className={`discover-rail-btn ${sortKey === key ? "discover-rail-btn-active" : ""}`}
+                  onClick={() => setSortKey(key)}
+                >
+                  <span className="discover-rail-btn-name">{label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </aside>
+
+      {/* MIDDLE — compact row list */}
+      <section className="discover-row-list">
+        <div className="discover-row-list-header">
+          {visible.length} {visible.length === 1 ? "record" : "records"}
+          {(sourceFilter.length > 0 || yearFilter.length > 0) &&
+            ` (filtered from ${allResults.length})`}
+        </div>
+        <ul className="discover-rows">
+          {visible.map((r) => (
+            <li key={r.id}>
+              <DiscoveryRow
+                result={r}
+                selected={selectedId === r.id}
+                onClick={() => setSelectedId(r.id)}
+              />
+            </li>
           ))}
         </ul>
-      )}
+      </section>
+
+      {/* RIGHT — detail pane */}
+      <DiscoveryDetailPane
+        result={selected}
+        discoveredViaQuery={query}
+        trackedRequests={trackedRequests}
+      />
     </div>
   );
 }
 
-function ResultCard({ result }: { result: SearchResult }) {
+function DiscoveryRow({
+  result,
+  selected,
+  onClick,
+}: {
+  result: SearchResult;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const sourceLabel = SOURCE_LABELS[result.source] || result.source;
+  const subjectParts: string[] = [sourceLabel];
+  if (result.agency) subjectParts.push(result.agency);
+  if (result.date) subjectParts.push(formatDate(result.date));
+  if (result.page_count != null) subjectParts.push(`${result.page_count} pages`);
+
   return (
-    <li className="result-card">
-      <div className="result-header">
+    <button
+      type="button"
+      className={`discover-row ${selected ? "discover-row-selected" : ""}`}
+      onClick={onClick}
+    >
+      <span className="discover-row-headline">
+        {result.title || `Result ${result.id}`}
+      </span>
+      <span className="discover-row-meta">
+        <span className="discover-row-source">{sourceLabel}</span>
+        {result.agency && (
+          <>
+            <span className="discover-row-meta-dot">·</span>
+            <span>{result.agency}</span>
+          </>
+        )}
+        {result.date && (
+          <>
+            <span className="discover-row-meta-dot">·</span>
+            <span>{formatDate(result.date)}</span>
+          </>
+        )}
+        {result.page_count != null && (
+          <>
+            <span className="discover-row-meta-dot">·</span>
+            <span>{result.page_count} pages</span>
+          </>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function DiscoveryDetailPane({
+  result,
+  discoveredViaQuery,
+  trackedRequests,
+}: {
+  result: SearchResult | null;
+  discoveredViaQuery: string;
+  trackedRequests: { id: string; title: string }[];
+}) {
+  // Save lifecycle state — keyed by result.id so it resets when the user
+  // clicks a different row in the middle column.
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [showNoteForm, setShowNoteForm] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [statusDraft, setStatusDraft] = useState<DiscoveryStatus>("saved");
+  const [linkedRequestId, setLinkedRequestId] = useState<string>("");
+  const [noteSavedAt, setNoteSavedAt] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Reset on result change
+  useEffect(() => {
+    setSaveStatus("idle");
+    setSavedId(null);
+    setShowNoteForm(false);
+    setNoteDraft("");
+    setStatusDraft("saved");
+    setLinkedRequestId("");
+    setNoteSavedAt(null);
+    setErrorMsg(null);
+  }, [result?.id]);
+
+  if (!result) {
+    return (
+      <aside className="discover-detail-pane discover-detail-pane-empty">
+        <div className="discover-detail-empty-inner">
+          Select a record from the list to read the full details.
+        </div>
+      </aside>
+    );
+  }
+
+  const sourceLabel = SOURCE_LABELS[result.source] || result.source;
+
+  async function handleSave() {
+    if (!result) return;
+    setSaveStatus("saving");
+    setErrorMsg(null);
+    try {
+      const saved = await saveDiscovery({
+        source: result.source,
+        source_id: result.id || null,
+        title: result.title || `Result ${result.id}`,
+        description: result.description || "",
+        url: result.url,
+        document_date: result.date || null,
+        page_count: result.page_count ?? null,
+        agency: result.agency || "",
+        discovered_via_query: discoveredViaQuery || null,
+        tracked_request_id: linkedRequestId || null,
+        note: noteDraft || "",
+      });
+      setSavedId(saved.id);
+      setSaveStatus("saved");
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Save failed");
+      setSaveStatus("error");
+    }
+  }
+
+  async function handleUpdateNoteOrStatus() {
+    if (!savedId) return;
+    try {
+      const { updateDiscovery } = await import("@/lib/discoveries-api");
+      await updateDiscovery(savedId, {
+        note: noteDraft,
+        status: statusDraft,
+        tracked_request_id: linkedRequestId || null,
+      });
+      setNoteSavedAt(Date.now());
+      setTimeout(() => setNoteSavedAt(null), 2000);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Update failed");
+    }
+  }
+
+  return (
+    <aside className="discover-detail-pane">
+      <div className="discover-detail-meta">
+        <span className="discover-detail-badge">{sourceLabel}</span>
+        {result.date && (
+          <span className="discover-detail-date">{formatDate(result.date)}</span>
+        )}
+      </div>
+
+      <h2 className="discover-detail-title">
+        {result.title || `Result ${result.id}`}
+      </h2>
+
+      {(result.agency || result.page_count != null || result.filed_by) && (
+        <dl className="discover-detail-facts">
+          {result.agency && (
+            <div className="discover-detail-fact">
+              <dt>Agency</dt>
+              <dd>{result.agency}</dd>
+            </div>
+          )}
+          {result.page_count != null && (
+            <div className="discover-detail-fact">
+              <dt>Pages</dt>
+              <dd>{result.page_count}</dd>
+            </div>
+          )}
+          {result.filed_by && (
+            <div className="discover-detail-fact">
+              <dt>Filed by</dt>
+              <dd>{result.filed_by}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      {result.description && (
+        <p className="discover-detail-description">{result.description}</p>
+      )}
+
+      <div className="discover-detail-actions">
+        {saveStatus === "saved" ? (
+          <span
+            className="discover-detail-btn discover-detail-btn-saved"
+            aria-label="Saved to your library"
+          >
+            Saved
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="discover-detail-btn discover-detail-btn-primary"
+            onClick={handleSave}
+            disabled={saveStatus === "saving"}
+          >
+            {saveStatus === "saving" ? "Saving…" : "Save"}
+          </button>
+        )}
+        <button
+          type="button"
+          className="discover-detail-btn"
+          onClick={() => setShowNoteForm((s) => !s)}
+        >
+          {showNoteForm ? "Hide note" : "Add note"}
+        </button>
+      </div>
+
+      {result.url && (
         <a
           href={result.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="result-title"
+          className="discover-detail-source-link"
         >
-          {result.title || `Result ${result.id}`}
+          Open original source ↗
         </a>
-        <span
-          className="source-badge"
-          style={{ backgroundColor: SOURCE_COLORS[result.source] || "#6b7280" }}
-        >
-          {SOURCE_LABELS[result.source] || result.source}
-        </span>
-      </div>
-
-      {result.description && (
-        <p className="result-description">{result.description}</p>
       )}
 
-      <div className="result-meta">
-        {result.agency && <span>Agency: {result.agency}</span>}
-        {result.date && <span>{formatDate(result.date)}</span>}
-        {result.page_count != null && <span>{result.page_count} pages</span>}
-        {result.filed_by && <span>Filed by: {result.filed_by}</span>}
-      </div>
-    </li>
+      {errorMsg && <p className="discover-detail-error">{errorMsg}</p>}
+
+      {showNoteForm && (
+        <div className="discover-detail-note-form">
+          <label className="discover-detail-note-label">Note</label>
+          <textarea
+            className="discover-detail-note-textarea"
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="Why this matters, what to look for, follow-ups…"
+            rows={3}
+          />
+          <label className="discover-detail-note-label">Status</label>
+          <select
+            className="discover-detail-note-select"
+            value={statusDraft}
+            onChange={(e) => setStatusDraft(e.target.value as DiscoveryStatus)}
+          >
+            <option value="saved">Saved</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="useful">Useful</option>
+            <option value="not_useful">Not useful</option>
+          </select>
+          {trackedRequests.length > 0 && (
+            <>
+              <label className="discover-detail-note-label">Link to tracked request</label>
+              <select
+                className="discover-detail-note-select"
+                value={linkedRequestId}
+                onChange={(e) => setLinkedRequestId(e.target.value)}
+              >
+                <option value="">Not linked</option>
+                {trackedRequests.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          {savedId ? (
+            <button
+              type="button"
+              className={`discover-detail-btn discover-detail-btn-primary ${
+                noteSavedAt ? "discover-detail-btn-just-saved" : ""
+              }`}
+              onClick={handleUpdateNoteOrStatus}
+            >
+              {noteSavedAt ? (
+                <span className="discover-saved-flash">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12" /></svg>
+                  Saved
+                </span>
+              ) : (
+                "Save note"
+              )}
+            </button>
+          ) : (
+            <p className="discover-detail-note-hint">
+              Save the document first, then your note + status + link will be attached.
+            </p>
+          )}
+        </div>
+      )}
+    </aside>
   );
 }
+
+/* Legacy StepSection / ResultCard removed — replaced by DiscoveryResults three-pane component above. */

@@ -140,6 +140,50 @@ TOOLS = [
         },
     },
     {
+        "name": "search_my_discoveries",
+        "description": "Search the user's saved discoveries library — documents they bookmarked from the Discover & Draft search. Returns metadata + the AI-generated description for each match. Use when the user asks about their saved research broadly, e.g. 'what did I save about EPA enforcement?', 'show me the documents I bookmarked this week', 'find the FDA inspection records I saved'. Filters by free-text query, status (saved/reviewed/useful/not_useful), tag, and recency window. For deep questions about the contents of ONE specific document, use read_saved_document instead.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Free-text search across title, description, and note fields.",
+                },
+                "status": {
+                    "type": "string",
+                    "description": "Filter by status: saved | reviewed | useful | not_useful. Empty for all.",
+                },
+                "tag": {
+                    "type": "string",
+                    "description": "Filter by a single tag. Empty for all.",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "How many days back to look (default 30).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "read_saved_document",
+        "description": "Look up ONE specific saved document and return the AI-generated summary, the user's own note, AND (when possible) the FULL extracted text content fetched live from the source URL. Use when the user asks about the actual contents of a specific document they've saved — e.g. 'summarize that document', 'what does the EPA NOV say'. IMPORTANT: If you have the document's id from a previous search_my_discoveries call, ALWAYS pass it as document_id — this guarantees an exact match and prevents lookup failures.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "document_id": {
+                    "type": "string",
+                    "description": "The document's UUID from a previous search_my_discoveries result. Preferred — guarantees exact match.",
+                },
+                "title_or_url": {
+                    "type": "string",
+                    "description": "Fallback: the document's title (fuzzy match) or exact source URL. Only use if you don't have the document_id.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "get_recent_signals",
         "description": "Get recent items from the Live FOIA Signals feed — realtime intelligence pulled from GAO bid protests, EPA ECHO enforcement, FDA Warning Letters, and DHS FOIA logs. Filter by persona (journalist, pharma_analyst, hedge_fund, environmental), keyword, and recency window. Use when a user asks 'what's new', 'what FOIA signals broke this week', or anything about realtime/live intelligence.",
         "input_schema": {
@@ -303,6 +347,20 @@ async def execute_tool(name: str, args: dict, user_id: Optional[str] = None) -> 
                 persona=args.get("persona", ""),
                 query=args.get("query", ""),
                 days=int(args.get("days", 7) or 7),
+            )
+        elif name == "search_my_discoveries":
+            result = chat_tools.search_my_discoveries(
+                user_id=user_id or "",
+                query=args.get("query", ""),
+                status=args.get("status", ""),
+                tag=args.get("tag", ""),
+                days=int(args.get("days", 30) or 30),
+            )
+        elif name == "read_saved_document":
+            result = await chat_tools.read_saved_document(
+                user_id=user_id or "",
+                document_id=args.get("document_id", ""),
+                title_or_url=args.get("title_or_url", ""),
             )
         else:
             result = {"error": f"Unknown tool: {name}"}
