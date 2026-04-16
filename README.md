@@ -1,6 +1,6 @@
 # FOIA Fluent
 
-### A civic AI platform that cuts through government opacity — finding existing public records, drafting optimized requests under federal and state transparency laws, tracking agency responses, and providing deep FOIA insights so documents reach the people who need them.
+### A civic AI platform that cuts through government opacity — finding existing public records, drafting optimized requests under federal and state transparency laws, tracking agency responses, surfacing real-time government activity, and providing deep FOIA insights so documents reach the people who need them.
 
 **[Live Site](https://www.foiafluent.com)**
 
@@ -26,14 +26,32 @@ The information belongs to the public. The process shouldn't be this hard.
 
 ## What's Built
 
-### Search & Draft
-Intelligent search that auto-identifies the best agency and generates legally optimized FOIA request letters.
+### Discover & Draft
+Three-pane discovery engine that searches across MuckRock, DocumentCloud, and the open web, then generates legally optimized FOIA request letters.
 
 - **Claude-powered query interpretation** — understands natural language, identifies relevant agencies and record types
 - **Automatic agency identification** — Claude identifies the best federal agency with alternatives and reasoning
+- **Three-pane results layout** — left filter rail (source, year, type, sort), unified compact row list, persistent right detail pane with Save / Track / Open / Note actions
 - **Anti-hallucination drafting** — Claude drafts from three layers of verified context (statute text, agency CFR regulations from eCFR, MuckRock outcomes). It cannot cite law from its training data.
 - **Agency intelligence research** — analyzes successful/denied/exemption-related FOIA outcomes for the target agency to inform drafting strategy
 - **AI interpretability** — "How We Built This Draft" section shows what the AI learned and what strategies it applied
+
+### My Discoveries
+Persistent library of documents saved from discovery results, with full lifecycle management.
+
+- **Save from search results** — one-click save from the discovery detail pane
+- **Status tracking** — mark discoveries as saved, reviewed, useful, or not useful
+- **Notes and tags** — annotate and organize saved documents
+- **Link to tracked requests** — connect discoveries to FOIA requests for a unified research trail
+- **Three-pane library** — same Gmail-style layout as Discover & Draft, with filters by status, source, and tags
+
+### Saved Searches
+Save and instantly re-open discovery queries with cached result snapshots.
+
+- **Result snapshots** — saves the full discovery response at save time, so clicking a saved search hydrates instantly without re-running the pipeline
+- **Sidebar integration** — saved searches appear in the left sidebar, accessible from every page
+- **Refresh on demand** — re-run the discovery pipeline and update the snapshot when you want fresh results
+- **Visible to all users** — signed-out users see the feature as a teaser; signed-in users get full functionality
 
 ### My Requests
 Track submitted requests from filing to resolution with Claude-powered response analysis and letter generation.
@@ -44,8 +62,18 @@ Track submitted requests from filing to resolution with Claude-powered response 
 - **Claude response analysis** — evaluates agency responses for completeness, validates each exemption cited, identifies missing records, and recommends next steps
 - **Appeal & follow-up letter generation** — generates letters directly from the communication timeline
 - **Import existing requests** — bring in-flight FOIA requests into the system with full research pipeline analysis
+- **Linked discoveries** — view documents from the discovery library that are connected to a tracked request
 
-### Data Hub — Federal Agencies
+### Live FOIA Signals
+Real-time intelligence feed aggregating government activity across four federal sources.
+
+- **Four ingestion sources** — GAO bid protests (via law firm RSS), EPA enforcement (ECHO bulk ZIP), FDA warning letters, DHS FOIA logs (Claude multimodal PDF extraction)
+- **Entity resolution** — AI-powered entity extraction and cross-source linking (companies, agencies, people, regulations)
+- **AI Patterns feed** — Claude Sonnet detects non-obvious cross-source patterns (compounding risk, coordinated activity, convergences)
+- **Persona-based filtering** — subscribe to industry personas to filter the feed to your interests
+- **Three-pane layout** — filter rail, compact signal rows, persistent detail pane with entity tags and source links
+
+### Transparency Hub — Federal Agencies
 Public transparency dashboard surfacing aggregated FOIA data across 1,600+ federal agencies.
 
 - **Transparency Score** — composite of success rate (40%), response speed (30%), fee rate (15%), and portal availability (15%)
@@ -54,7 +82,7 @@ Public transparency dashboard surfacing aggregated FOIA data across 1,600+ feder
 - **Per-agency deep-dives** — outcome pie chart, score breakdown, exemption patterns, success/denial patterns
 - **Weekly refresh** — MuckRock data cached in Supabase via `refresh_hub_stats.py`
 
-### Data Hub — State & Local
+### Transparency Hub — State & Local
 Interactive choropleth map of state-level FOIA transparency across 54 state jurisdictions and thousands of agencies.
 
 - **Interactive US map** — states color-coded by transparency score, hover tooltips, click to drill down
@@ -62,7 +90,7 @@ Interactive choropleth map of state-level FOIA transparency across 54 state juri
 - **Jurisdiction-scoped agency routing** — `/hub/states/california/department-of-education` avoids slug conflicts across jurisdictions
 - **Data pipeline** — `refresh_jurisdiction_stats.py` fetches from MuckRock API
 
-### Data Hub — Insights
+### Transparency Hub — Insights
 Deep FOIA analysis using government-authoritative data from FOIA.gov annual reports (FY 2008–2024).
 
 - **FOIA at a Glance** — hero stats with year-over-year change indicators
@@ -80,14 +108,24 @@ Deep FOIA analysis using government-authoritative data from FOIA.gov annual repo
 Persistent FOIA research assistant on every page with tool use, 4-tier accuracy system, and anti-hallucination safeguards.
 
 - **Floating chat panel** — appears on every page, minimizable, Cmd+K to toggle
-- **7 tools** — lookup exemptions, search agencies, query user's requests, search web (trusted + broad), search MuckRock, query hub stats
+- **11 tools** — lookup exemptions, search agencies, query user's requests, search web (trusted + broad), search MuckRock, query hub stats, search user's saved discoveries, read saved document content, query signals feed
 - **4-tier accuracy system** — instant local lookup → trusted domain search → deep research agent → graceful fallback with resource links
 - **Auto-escalation** — upgrades from Haiku to Sonnet and broadens search when trusted sources don't have the answer
 - **READ-ONLY** — chat cannot modify any database records. Enforced at code level.
 - **Anti-hallucination** — every fact must come from a tool result or verified reference data. Sources cited as clickable chips.
-- **Platform expert** — guides users through Search & Draft, My Requests, and Data Hub instead of giving generic advice
+- **Platform expert** — guides users through Discover & Draft, My Requests, and Transparency Hub instead of giving generic advice
 - **Context-aware** — knows which page the user is on and adapts guidance accordingly
 - **SSE streaming** — real-time response with thinking dots, tool call indicators, and incremental text
+
+### Navigation
+Left sidebar with collapsible icon-strip, profile block, and saved searches.
+
+- **Workspace section** — Transparency Hub, Discover & Draft, My Requests, My Discoveries (inline SVG icons)
+- **Intelligence section** — Live FOIA Signals with live pulse indicator
+- **Saved Searches section** — clickable list that deep-links into cached discovery results
+- **Profile block** — avatar initial, email, sign-out dropdown pinned to the bottom
+- **Collapsed mode** — 64px icon strip with tooltips, state persisted in localStorage
+- **Mobile** — drawer behind hamburger button with scrim overlay
 
 ## Architecture
 
@@ -95,14 +133,15 @@ Persistent FOIA research assistant on every page with tool use, 4-tier accuracy 
 Frontend (Next.js 14)          Backend (FastAPI)              External Services
 ┌──────────────────┐          ┌──────────────────────┐       ┌─────────────────┐
 │                  │   HTTP   │                      │       │ Claude API      │
-│  Data Hub        │ ──────> │  Chat Orchestrator    │ ────> │ (Haiku+Sonnet)  │
-│  Search + Draft  │          │  Query Interpreter    │       │                 │
+│  Transparency Hub│ ──────> │  Chat Orchestrator    │ ────> │ (Haiku+Sonnet)  │
+│  Discover & Draft│          │  Discovery Pipeline   │       │                 │
 │  My Requests     │   SSE   │  FOIA Drafter         │       │ Tavily Search   │
-│  Chat Panel      │ <────── │  Agency Intel Agent   │       │                 │
-│                  │          │  Response Analyzer    │       │ MuckRock API    │
-│  Insights        │          │  Letter Generator     │       │ FOIA.gov API    │
-│  State Map       │          │  Insights Service     │       │ DocumentCloud   │
-│                  │          │  Chat Tools (7)       │       │ eCFR API        │
+│  My Discoveries  │ <────── │  Agency Intel Agent   │       │                 │
+│  FOIA Signals    │          │  Response Analyzer    │       │ MuckRock API    │
+│  Chat Panel      │          │  Letter Generator     │       │ FOIA.gov API    │
+│  Left Sidebar    │          │  Signals Ingestion    │       │ DocumentCloud   │
+│                  │          │  Discoveries Service  │       │ eCFR API        │
+│                  │          │  Chat Tools (11)      │       │ EPA ECHO        │
 └──────────────────┘          └──────────────────────┘       └─────────────────┘
                                         │
                               ┌─────────▼─────────┐
@@ -194,6 +233,13 @@ python -m app.scripts.refresh_insights_data
 
 # AI news digest (weekly)
 python -m app.scripts.refresh_news_digest
+
+# Live FOIA Signals ingestion (daily or on-demand)
+python -m app.scripts.refresh_signals_gao
+python -m app.scripts.refresh_signals_epa
+python -m app.scripts.refresh_signals_fda
+python -m app.scripts.refresh_signals_dhs
+python -m app.scripts.generate_patterns
 ```
 
 ## Deployment
@@ -213,6 +259,7 @@ python -m app.scripts.refresh_news_digest
 | [DocumentCloud](https://www.documentcloud.org) | Searchable repository of public-interest documents |
 | [Tavily](https://tavily.com) | Domain-scoped web search |
 | [eCFR](https://www.ecfr.gov) | Verbatim CFR regulation text for 52 federal agencies |
+| [EPA ECHO](https://echo.epa.gov) | Environmental enforcement and compliance data |
 
 ## Who It's For
 
@@ -225,4 +272,3 @@ python -m app.scripts.refresh_news_digest
 ## Contributing
 
 This project is open source under [dssg-nyc](https://github.com/dssg-nyc). We welcome contributions — see the issues tab or reach out.
-
