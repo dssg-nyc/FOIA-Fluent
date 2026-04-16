@@ -354,58 +354,60 @@ export default function Sidebar() {
           </ul>
         </nav>
 
-        {userEmail && (
-          <div className="sidebar-section sidebar-section-recent">
-            <div className="sidebar-section-label">Saved Searches</div>
-            {recentSearches.length > 0 ? (
-              <ul className="sidebar-recent-list">
-                {recentSearches.map((s) => (
-                  <li key={s.id} className="sidebar-recent-item">
-                    <a
-                      href={`/draft?id=${s.id}`}
-                      onClick={(e) => handleRecentClick(e, s.id)}
-                      className="sidebar-recent-link"
-                      title={s.query}
+        <div className="sidebar-section sidebar-section-recent">
+          <div className="sidebar-section-label">Saved Searches</div>
+          {recentSearches.length > 0 ? (
+            <ul className="sidebar-recent-list">
+              {recentSearches.map((s) => (
+                <li key={s.id} className="sidebar-recent-item">
+                  <a
+                    href={`/draft?id=${s.id}`}
+                    onClick={(e) => handleRecentClick(e, s.id)}
+                    className="sidebar-recent-link"
+                    title={s.query}
+                  >
+                    <span className="sidebar-recent-text">{s.query}</span>
+                    {s.last_result_count > 0 && (
+                      <span className="sidebar-recent-count">
+                        {s.last_result_count}
+                      </span>
+                    )}
+                  </a>
+                  <button
+                    type="button"
+                    className="sidebar-recent-delete"
+                    onClick={(e) => handleDeleteRecent(e, s.id)}
+                    aria-label="Remove saved search"
+                    title="Remove"
+                  >
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     >
-                      <span className="sidebar-recent-text">{s.query}</span>
-                      {s.last_result_count > 0 && (
-                        <span className="sidebar-recent-count">
-                          {s.last_result_count}
-                        </span>
-                      )}
-                    </a>
-                    <button
-                      type="button"
-                      className="sidebar-recent-delete"
-                      onClick={(e) => handleDeleteRecent(e, s.id)}
-                      aria-label="Remove saved search"
-                      title="Remove"
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="sidebar-recent-empty">
-                No saved searches yet. Save a query from Discover &amp; Draft to
-                jump back in.
-              </div>
-            )}
-          </div>
-        )}
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : userEmail ? (
+            <div className="sidebar-recent-empty">
+              No saved searches yet. Save a query from Discover &amp; Draft to
+              jump back in.
+            </div>
+          ) : (
+            <div className="sidebar-recent-empty">
+              Sign in to save searches and pick up where you left off.
+            </div>
+          )}
+        </div>
 
         <div className="sidebar-spacer" />
 
