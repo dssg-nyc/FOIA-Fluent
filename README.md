@@ -4,9 +4,11 @@
 
 **[Live Site](https://www.foiafluent.com)**
 
-![FOIA Fluent — Homepage](docs/images/homepage_update.png)
+![FOIA Fluent — Homepage](docs/images/homepage.png)
 
-![FOIA Fluent — Search & Draft](docs/images/draft_page.png)
+![FOIA Fluent — Discover & Draft](docs/images/draft_page.png)
+
+![FOIA Fluent — Intelligence](docs/images/intelligence_page.png)
 
 ---
 
