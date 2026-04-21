@@ -7,16 +7,15 @@ FOIA Fluent is an open source civic AI platform that helps journalists, lawyers,
 </p>
 <p align="center"><sub><b>Homepage</b>: entry point to Discover and Draft, Transparency Hub, Live FOIA Signals, My Requests, and the AI chat assistant.</sub></p>
 
-<table align="center">
-  <tr>
-    <td align="center" valign="middle"><img src="docs/images/draft_page.png" height="300" alt="Three pane search results layout with filter rail, row list, and detail pane"></td>
-    <td align="center" valign="middle"><img src="docs/images/intelligence_page.png" height="300" alt="Live FOIA Signals feed with entity tags and source attribution"></td>
-  </tr>
-  <tr>
-    <td align="center" valign="top"><sub><b>Discover and Draft</b>: unified search across MuckRock, DocumentCloud, and the open web. Detail pane drives Save, Track, or Draft actions.</sub></td>
-    <td align="center" valign="top"><sub><b>Live FOIA Signals</b>: real time feed aggregating four federal sources with AI detected cross source patterns.</sub></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/images/draft_page.png" width="90%" alt="Three pane search results layout with filter rail, row list, and detail pane">
+</p>
+<p align="center"><sub><b>Discover and Draft</b>: unified search across MuckRock, DocumentCloud, and the open web. Detail pane drives Save, Track, or Draft actions.</sub></p>
+
+<p align="center">
+  <img src="docs/images/intelligence_page.png" width="90%" alt="Live FOIA Signals feed with entity tags and source attribution">
+</p>
+<p align="center"><sub><b>Live FOIA Signals</b>: real time feed aggregating four federal sources with AI detected cross source patterns.</sub></p>
 
 ---
 
