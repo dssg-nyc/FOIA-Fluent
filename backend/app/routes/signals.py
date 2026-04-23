@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from app.middleware.auth import get_current_user_id
+from app.middleware.auth import get_current_user_id, get_current_user_id_optional
 from app.models.signals import (
     PersonaCatalogResponse,
     SetUserPersonasPayload,
@@ -37,17 +37,16 @@ def get_signal_feed(
     personas: Optional[str] = Query(default=None, description="Comma-separated persona ids"),
     days: int = Query(default=30, ge=1, le=365),
     limit: int = Query(default=100, ge=1, le=200),
-    user_id: str = Depends(get_current_user_id),
+    user_id: Optional[str] = Depends(get_current_user_id_optional),
 ):
-    """Authenticated feed of recent signals.
-
-    If `personas` is omitted, falls back to the user's saved persona subscription.
-    If the user has none saved either, returns all recent signals (dogfood mode).
+    """Feed of recent signals. Public — unauthenticated visitors get the
+    unfiltered feed; signed-in users fall back to their saved persona
+    subscription when `personas` is not supplied.
     """
     persona_list: list[str] = []
     if personas:
         persona_list = [p.strip() for p in personas.split(",") if p.strip()]
-    else:
+    elif user_id:
         persona_list = signals_service.get_user_personas(user_id)
 
     since = datetime.now(timezone.utc) - timedelta(days=days)

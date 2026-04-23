@@ -125,3 +125,18 @@ async def get_current_user_id(
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+
+async def get_current_user_id_optional(
+    authorization: str = Header(default="", alias="Authorization"),
+) -> Optional[str]:
+    """Optional auth: returns the user ID if a valid token is present,
+    otherwise returns None without raising. Use for routes that personalize
+    when signed in but still work for anonymous visitors.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        return await get_current_user_id(authorization=authorization)
+    except HTTPException:
+        return None

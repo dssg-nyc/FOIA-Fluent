@@ -323,11 +323,32 @@ export default function PatternGraph(props: GraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const simulationRef = useRef<Simulation<GraphNode, GraphLink> | null>(null);
-  const [width, setWidth] = useState(960);
-  const height = props.height ?? (props.mode === "galaxy" ? 720 : 520);
+  // Seed width + mobile from the actual window on first render so the SVG
+  // never paints wider than the viewport (which would cause iOS Safari to
+  // zoom the page out and break the sidebar's mobile media query).
+  const [width, setWidth] = useState(() => {
+    if (typeof window !== "undefined") {
+      return Math.min(960, window.innerWidth);
+    }
+    return 960;
+  });
+  const [mobile, setMobile] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+  const height =
+    props.height ??
+    (mobile
+      ? props.mode === "galaxy"
+        ? 520
+        : 400
+      : props.mode === "galaxy"
+      ? 720
+      : 520);
   const [tick, setTick] = useState(0);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [mobile, setMobile] = useState(false);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
   const panStart = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -615,24 +636,87 @@ export default function PatternGraph(props: GraphProps) {
     setIsPanning(false);
   }
 
+  // ── Touch (pan + pinch zoom) ──────────────────────────────────────────────
+  const touchStart = useRef<{
+    midX: number;
+    midY: number;
+    startX: number;
+    startY: number;
+    distance?: number;
+    startK?: number;
+  } | null>(null);
+
+  function onTouchStart(e: React.TouchEvent<SVGSVGElement>) {
+    if (e.touches.length === 1) {
+      const target = e.target as Element;
+      if (target.closest(".pattern-graph-node")) return;
+      const t = e.touches[0];
+      touchStart.current = {
+        midX: t.clientX,
+        midY: t.clientY,
+        startX: transform.x,
+        startY: transform.y,
+      };
+    } else if (e.touches.length === 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      touchStart.current = {
+        midX: (a.clientX + b.clientX) / 2,
+        midY: (a.clientY + b.clientY) / 2,
+        startX: transform.x,
+        startY: transform.y,
+        distance: d,
+        startK: transform.k,
+      };
+    }
+  }
+
+  function onTouchMove(e: React.TouchEvent<SVGSVGElement>) {
+    const ts = touchStart.current;
+    if (!ts) return;
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const dx = t.clientX - ts.midX;
+      const dy = t.clientY - ts.midY;
+      setTransform((cur) => ({
+        ...cur,
+        x: ts.startX + dx,
+        y: ts.startY + dy,
+      }));
+    } else if (
+      e.touches.length === 2 &&
+      ts.distance !== undefined &&
+      ts.startK !== undefined
+    ) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const scale = d / ts.distance;
+      const newK = Math.max(0.35, Math.min(3, ts.startK * scale));
+      const rect = svgRef.current?.getBoundingClientRect();
+      const midX = (a.clientX + b.clientX) / 2 - (rect?.left ?? 0);
+      const midY = (a.clientY + b.clientY) / 2 - (rect?.top ?? 0);
+      const ratio = newK / ts.startK;
+      setTransform({
+        k: newK,
+        x: midX - (midX - ts.startX) * ratio,
+        y: midY - (midY - ts.startY) * ratio,
+      });
+    }
+  }
+
+  function onTouchEnd(e: React.TouchEvent<SVGSVGElement>) {
+    // End of pan/zoom when all fingers lift
+    if (e.touches.length === 0) {
+      touchStart.current = null;
+    }
+  }
+
   // Screen-space position for an SVG coordinate, applying the current transform.
   function toScreen(x: number, y: number): { x: number; y: number } {
     return {
       x: x * transform.k + transform.x,
       y: y * transform.k + transform.y,
     };
-  }
-
-  // ── Mobile fallback ───────────────────────────────────────────────────────
-
-  if (mobile && props.mode === "galaxy") {
-    return (
-      <div ref={containerRef} className="pattern-graph pattern-graph-mobile-fallback">
-        <p className="pattern-graph-mobile-msg">
-          Graph view is available on wider screens. The list below is keyboard and touch friendly.
-        </p>
-      </div>
-    );
   }
 
   const galaxyData =
@@ -680,16 +764,22 @@ export default function PatternGraph(props: GraphProps) {
     <div ref={containerRef} className="pattern-graph">
       <svg
         ref={svgRef}
-        width={width}
-        height={height}
         className="pattern-graph-svg"
         viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
-        style={{ cursor: isPanning ? "grabbing" : "grab" }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
+        style={{
+          height: `${height}px`,
+          cursor: isPanning ? "grabbing" : "grab",
+        }}
       >
         <defs>
           <filter id="pattern-graph-glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -937,7 +1027,11 @@ export default function PatternGraph(props: GraphProps) {
         </button>
       </div>
 
-      <div className="pattern-graph-hint">Drag to pan · scroll to zoom · hover a node to focus</div>
+      <div className="pattern-graph-hint">
+        {mobile
+          ? "Drag to pan · pinch to zoom · tap a cluster"
+          : "Drag to pan · scroll to zoom · hover a node to focus"}
+      </div>
 
       {/* Legend — detail mode only (galaxy uses the cluster cards as its key) */}
       {props.mode === "detail" && (

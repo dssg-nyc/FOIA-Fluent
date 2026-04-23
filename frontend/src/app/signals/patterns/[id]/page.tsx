@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import AuthGuard from "@/components/AuthGuard";
 import PatternGraph from "@/components/PatternGraph";
 import {
   fetchPatternDetail,
@@ -190,9 +189,5 @@ function PatternDetailInner() {
 }
 
 export default function PatternDetailPage() {
-  return (
-    <AuthGuard>
-      <PatternDetailInner />
-    </AuthGuard>
-  );
+  return <PatternDetailInner />;
 }
