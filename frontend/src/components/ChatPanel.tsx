@@ -32,6 +32,7 @@ export default function ChatPanel() {
     }
     return true;
   });
+  const prevPathname = useRef(pathname);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -49,6 +50,17 @@ export default function ChatPanel() {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
+
+  // When the user moves from the landing page into the app, auto-open the
+  // chat so they see it for the first time as they enter.
+  useEffect(() => {
+    if (prevPathname.current === "/" && pathname !== "/") {
+      if (typeof window !== "undefined" && window.innerWidth > 768) {
+        setOpen(true);
+      }
+    }
+    prevPathname.current = pathname;
+  }, [pathname]);
 
   // Keyboard shortcut: Cmd+K to toggle
   useEffect(() => {
@@ -205,6 +217,12 @@ export default function ChatPanel() {
     }
 
     return html;
+  }
+
+  // Hide the chat entirely on the landing page — it's a marketing surface,
+  // not a working surface.
+  if (pathname === "/") {
+    return null;
   }
 
   return (

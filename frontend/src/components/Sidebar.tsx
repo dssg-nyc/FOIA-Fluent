@@ -224,6 +224,12 @@ export default function Sidebar() {
     router.push("/login");
   }
 
+  // The landing page at "/" is a full-width marketing page with its own top
+  // nav — render nothing here so the sidebar doesn't compete with it.
+  if (pathname === "/") {
+    return null;
+  }
+
   const initial = (userEmail?.[0] ?? "?").toUpperCase();
 
   return (
@@ -247,7 +253,7 @@ export default function Sidebar() {
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <Link href="/" className="sidebar-mobile-brand">
+        <Link href="/hub" className="sidebar-mobile-brand">
           FOIA Fluent
         </Link>
       </div>
@@ -267,7 +273,7 @@ export default function Sidebar() {
         aria-label="Main navigation"
       >
         <div className="sidebar-top">
-          <Link href="/" className="sidebar-brand">
+          <Link href="/hub" className="sidebar-brand">
             <span className="sidebar-brand-full">FOIA Fluent</span>
             <span className="sidebar-brand-short">FF</span>
           </Link>

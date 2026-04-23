@@ -33,6 +33,7 @@ export interface Signal {
   ingested_at: string | null;
   agency_codes: string[];
   entities: SignalEntities;
+  entity_slugs?: string[];
   persona_tags: string[];
   priority: number;
   requester: string;
@@ -167,6 +168,7 @@ export interface PatternEvidenceSignal {
   requester?: string;
   source_url?: string;
   entities?: SignalEntities;
+  entity_slugs?: string[];
 }
 
 export interface SignalPattern {
