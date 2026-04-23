@@ -15,6 +15,20 @@ import {
   ResponseAnalysis,
 } from "@/lib/tracking-api";
 import { fetchMyDiscoveries, type DiscoveredDocument } from "@/lib/discoveries-api";
+import {
+  queueSubmission,
+  cancelSubmission,
+  listRunsForRequest,
+  streamSubmissionRun,
+  previewChannel,
+  type SubmissionRun,
+  type ChannelPreview,
+} from "@/lib/submissions-api";
+import {
+  getProfile,
+  updateProfile,
+  type UserProfile,
+} from "@/lib/profile-api";
 import AuthGuard from "@/components/AuthGuard";
 import ConfirmModal from "@/components/ConfirmModal";
 
@@ -280,6 +294,23 @@ export default function RequestDetail() {
       </div>
 
       {actionError && <div className="error-message">{actionError}</div>}
+
+      {/* ── Auto-file (only while still in draft) ── */}
+      {status === "draft" && !showSubmitForm && (
+        <AutoFileCard
+          requestId={request.id}
+          agencyName={request.agency.name || request.agency.abbreviation || "the agency"}
+          initialName={request.requester_name || ""}
+          initialOrganization={request.requester_organization || ""}
+          initialEmail={request.requester_email || ""}
+          initialPhone={request.requester_phone || ""}
+          initialAddress={request.requester_address || ""}
+          initialLetterText={request.letter_text || ""}
+          onFiled={() => {
+            getRequest(request.id).then(setDetail).catch(() => {});
+          }}
+        />
+      )}
 
       {/* ── Actions ── */}
       {!isResolved && (status === "draft" || showSubmitForm || canGenerateFollowUp) && (
@@ -1005,5 +1036,542 @@ function TimelineEntry({
         )}
       </div>
     </li>
+  );
+}
+
+// ── Auto-File Card ──────────────────────────────────────────────────────────
+
+function AutoFileCard({
+  requestId,
+  agencyName,
+  initialName,
+  initialOrganization,
+  initialEmail,
+  initialPhone,
+  initialAddress,
+  initialLetterText,
+  onFiled,
+}: {
+  requestId: string;
+  agencyName: string;
+  initialName: string;
+  initialOrganization: string;
+  initialEmail: string;
+  initialPhone: string;
+  initialAddress: string;
+  initialLetterText: string;
+  onFiled: () => void;
+}) {
+  const [runs, setRuns] = useState<SubmissionRun[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [queueing, setQueueing] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [channelSummary, setChannelSummary] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<number>(0); // seconds remaining
+  const streamStopRef = useRef<(() => void) | null>(null);
+
+  // Review / edit state (populated from user_profiles + tracked_request fields)
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [senderName, setSenderName] = useState(initialName);
+  const [senderOrg, setSenderOrg] = useState(initialOrganization);
+  const [senderEmail, setSenderEmail] = useState(initialEmail);
+  const [senderPhone, setSenderPhone] = useState(initialPhone);
+  const [senderAddress, setSenderAddress] = useState(initialAddress);
+  const [letterText, setLetterText] = useState(initialLetterText);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [showLetterEdit, setShowLetterEdit] = useState(false);
+  const [channelPreview, setChannelPreview] = useState<ChannelPreview | null>(null);
+
+  const activeRun: SubmissionRun | undefined = runs.find((r) =>
+    ["queued", "submitting", "awaiting_user"].includes(r.status),
+  );
+  const latestTerminal: SubmissionRun | undefined = runs.find((r) =>
+    ["succeeded", "failed", "cancelled"].includes(r.status),
+  );
+
+  // Initial fetch — submission runs + profile + channel preview in parallel
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [list, prof, preview] = await Promise.all([
+          listRunsForRequest(requestId),
+          getProfile().catch(() => null),
+          previewChannel(requestId).catch(() => null),
+        ]);
+        if (cancelled) return;
+        setRuns(list);
+        setChannelPreview(preview);
+        if (prof) {
+          setProfile(prof);
+          // Only fall back to profile values when the tracked_request fields
+          // are empty — never overwrite a value the user already set on this
+          // specific request.
+          if (!initialName && prof.full_name) setSenderName(prof.full_name);
+          if (!initialOrganization && prof.organization)
+            setSenderOrg(prof.organization);
+          if (!initialEmail && prof.email) setSenderEmail(prof.email);
+          if (!initialPhone && prof.phone) setSenderPhone(prof.phone);
+          if (!initialAddress && prof.mailing_address)
+            setSenderAddress(prof.mailing_address);
+        }
+        setProfileLoaded(true);
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    requestId,
+    initialName,
+    initialOrganization,
+    initialEmail,
+    initialPhone,
+    initialAddress,
+  ]);
+
+  // Subscribe to SSE while there is an active run
+  useEffect(() => {
+    if (!activeRun) {
+      streamStopRef.current?.();
+      streamStopRef.current = null;
+      return;
+    }
+    streamStopRef.current?.();
+    streamStopRef.current = streamSubmissionRun(activeRun.id, {
+      onUpdate: (run) => {
+        setRuns((prev) => {
+          const idx = prev.findIndex((r) => r.id === run.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = run;
+            return next;
+          }
+          return [run, ...prev];
+        });
+        if (["succeeded", "cancelled"].includes(run.status)) {
+          onFiled();
+        }
+      },
+      onError: () => {
+        /* transient — we fall back to the 1s poll the backend already does */
+      },
+    });
+    return () => {
+      streamStopRef.current?.();
+      streamStopRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRun?.id]);
+
+  // Countdown timer for queued runs
+  useEffect(() => {
+    if (!activeRun || activeRun.status !== "queued" || !activeRun.sends_at) {
+      setCountdown(0);
+      return;
+    }
+    function tick() {
+      if (!activeRun || !activeRun.sends_at) return;
+      const remaining = Math.max(
+        0,
+        Math.floor(
+          (new Date(activeRun.sends_at).getTime() - Date.now()) / 1000,
+        ),
+      );
+      setCountdown(remaining);
+    }
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [activeRun]);
+
+  // Build the list of profile fields that differ from the saved profile,
+  // so we only PUT /profile when the user actually edited something.
+  function profileDiff(): Partial<UserProfile> {
+    if (!profile) {
+      // First-time user — persist whatever non-empty values they entered
+      const diff: Partial<UserProfile> = {};
+      if (senderName) diff.full_name = senderName;
+      if (senderOrg) diff.organization = senderOrg;
+      if (senderEmail) diff.email = senderEmail;
+      if (senderPhone) diff.phone = senderPhone;
+      if (senderAddress) diff.mailing_address = senderAddress;
+      return diff;
+    }
+    const diff: Partial<UserProfile> = {};
+    if (senderName !== profile.full_name) diff.full_name = senderName;
+    if (senderOrg !== profile.organization) diff.organization = senderOrg;
+    if (senderEmail !== profile.email) diff.email = senderEmail;
+    if (senderPhone !== profile.phone) diff.phone = senderPhone;
+    if (senderAddress !== profile.mailing_address)
+      diff.mailing_address = senderAddress;
+    return diff;
+  }
+
+  async function handleConfirmAndQueue() {
+    setQueueing(true);
+    setError(null);
+    try {
+      // 1. Persist profile edits (if any) so the user doesn't have to
+      // re-enter contact info on future filings.
+      const pDiff = profileDiff();
+      if (Object.keys(pDiff).length > 0) {
+        const saved = await updateProfile(pDiff);
+        setProfile(saved);
+      }
+
+      // 2. Persist the reviewed letter + contact snapshot onto the tracked
+      // request so the submitter picks it up at send time.
+      await updateRequest(requestId, {
+        letter_text: letterText,
+        requester_name: senderName,
+        requester_organization: senderOrg,
+        requester_email: senderEmail,
+        requester_phone: senderPhone,
+        requester_address: senderAddress,
+      });
+
+      // 3. Queue the submission (30-min QA hold starts now).
+      const res = await queueSubmission({ request_id: requestId });
+      setRuns((prev) => [res.run, ...prev]);
+      setChannelSummary(res.channel_summary);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setQueueing(false);
+    }
+  }
+
+  // Simple retry for the failed-state path — no re-review, just re-queue.
+  async function handleRetry() {
+    setQueueing(true);
+    setError(null);
+    try {
+      const res = await queueSubmission({ request_id: requestId });
+      setRuns((prev) => [res.run, ...prev]);
+      setChannelSummary(res.channel_summary);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setQueueing(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!activeRun) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      const updated = await cancelSubmission(activeRun.id, "user cancelled");
+      setRuns((prev) =>
+        prev.map((r) => (r.id === updated.id ? updated : r)),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  if (loading) return null;
+
+  // Success state — show a summary, offer to file again
+  if (latestTerminal?.status === "succeeded" && !activeRun) {
+    const receipt = latestTerminal.receipt as { to?: string; subject?: string; message_id?: string };
+    return (
+      <div className="autofile-card autofile-card-success">
+        <div className="autofile-head">
+          <span className="autofile-eyebrow autofile-eyebrow-success">✓ Filed</span>
+          <span className="autofile-meta">
+            {latestTerminal.completed_at
+              ? new Date(latestTerminal.completed_at).toLocaleString()
+              : ""}
+          </span>
+        </div>
+        <h3 className="autofile-title">Submitted to {agencyName}</h3>
+        {receipt?.to && (
+          <p className="autofile-body">
+            Email delivered to <code>{receipt.to}</code>. Agency replies will
+            appear in the communication timeline below.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // Active run — show countdown + cancel OR live log
+  if (activeRun) {
+    const minutes = Math.floor(countdown / 60);
+    const seconds = countdown % 60;
+    const isQueued = activeRun.status === "queued";
+    const isSubmitting = activeRun.status === "submitting";
+    const isFailed = (activeRun.status as string) === "failed";
+
+    return (
+      <div className="autofile-card autofile-card-active">
+        <div className="autofile-head">
+          <span className="autofile-eyebrow">
+            {isQueued
+              ? "Filing in"
+              : isSubmitting
+                ? "Sending…"
+                : "Processing"}
+          </span>
+          {channelSummary && (
+            <span className="autofile-meta">{channelSummary}</span>
+          )}
+        </div>
+
+        {isQueued && (
+          <>
+            <div className="autofile-countdown">
+              {minutes}:{seconds.toString().padStart(2, "0")}
+            </div>
+            <p className="autofile-body">
+              Your request will be sent to <strong>{agencyName}</strong> via
+              email in {minutes > 0 ? `${minutes} min ${seconds}s` : `${seconds}s`}.
+              Cancel anytime before then.
+            </p>
+            <button
+              className="autofile-cancel-btn"
+              onClick={handleCancel}
+              disabled={cancelling}
+            >
+              {cancelling ? "Cancelling…" : "Cancel"}
+            </button>
+          </>
+        )}
+
+        {isSubmitting && (
+          <p className="autofile-body">
+            Sending your request to {agencyName}… this takes a few seconds.
+          </p>
+        )}
+
+        {activeRun.log.length > 0 && (
+          <details className="autofile-log">
+            <summary>What the agent is doing ({activeRun.log.length} steps)</summary>
+            <ol className="autofile-log-list">
+              {activeRun.log.map((entry, i) => (
+                <li key={i} className={`autofile-log-entry autofile-log-${entry.level || "info"}`}>
+                  <span className="autofile-log-ts">
+                    {new Date(entry.ts).toLocaleTimeString()}
+                  </span>
+                  <span className="autofile-log-action">{entry.action}</span>
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+
+        {isFailed && activeRun.error && (
+          <p className="autofile-error">Error: {activeRun.error}</p>
+        )}
+      </div>
+    );
+  }
+
+  // Failed terminal state — offer retry
+  if (latestTerminal?.status === "failed") {
+    return (
+      <div className="autofile-card autofile-card-failed">
+        <div className="autofile-head">
+          <span className="autofile-eyebrow autofile-eyebrow-failed">Filing failed</span>
+        </div>
+        <p className="autofile-body">{latestTerminal.error || "Unknown error."}</p>
+        <button
+          className="autofile-primary-btn"
+          onClick={handleRetry}
+          disabled={queueing}
+        >
+          {queueing ? "Queueing…" : "Try again"}
+        </button>
+      </div>
+    );
+  }
+
+  // Default — no runs yet; show the review + edit pane
+  if (!letterText.trim() && !profileLoaded) {
+    return null;
+  }
+
+  // Portal-only agencies (DHS components, CIA, DOD, IRS, VA, HHS, …) have no
+  // email filing channel. Show a card that points the user at the agency's
+  // portal instead of the normal Confirm flow — Phase 2 scope to automate.
+  if (channelPreview && !channelPreview.supported) {
+    return (
+      <div className="autofile-card autofile-card-portal">
+        <div className="autofile-head">
+          <span className="autofile-eyebrow autofile-eyebrow-warn">
+            Portal-only agency
+          </span>
+        </div>
+        <h3 className="autofile-title">
+          Auto-file isn&rsquo;t available for{" "}
+          {channelPreview.agency_name || agencyName} yet
+        </h3>
+        <p className="autofile-body">
+          {channelPreview.agency_abbreviation || "This agency"} requires
+          submission through their FOIA portal — they don&rsquo;t accept
+          emailed requests. Submit manually on their site, then click{" "}
+          <strong>Mark as Submitted</strong> below to track it here.
+        </p>
+        {channelPreview.submission_notes && (
+          <p className="autofile-note">{channelPreview.submission_notes}</p>
+        )}
+        {channelPreview.foia_website && (
+          <div className="autofile-actions">
+            <a
+              className="autofile-primary-btn autofile-primary-link"
+              href={channelPreview.foia_website}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open {channelPreview.agency_abbreviation || "agency"} FOIA portal
+              ↗
+            </a>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Validation: all three required fields present, and the letter has no
+  // `[something to provide]` placeholders still hanging around.
+  const hasPlaceholder = /\[[^\]]{0,60}\]/.test(letterText);
+  const requiredFilled =
+    senderName.trim().length > 0 &&
+    senderEmail.trim().length > 0 &&
+    senderAddress.trim().length > 0;
+  const canConfirm = requiredFilled && !hasPlaceholder && letterText.trim().length > 0;
+
+  return (
+    <div className="autofile-card autofile-card-cta">
+      <div className="autofile-head">
+        <span className="autofile-eyebrow autofile-eyebrow-primary">
+          Review &amp; file this request
+        </span>
+      </div>
+      <p className="autofile-body">
+        We&rsquo;ll email <strong>{agencyName}</strong> from{" "}
+        <code>reply-&hellip;@foiafluent.com</code> with your name on the letter.
+        Check the sender info and letter below — you have a 30-minute window to
+        cancel after confirming.
+      </p>
+
+      <div className="autofile-form-grid">
+        <label className="autofile-field">
+          <span className="autofile-field-label">
+            Your name <span className="autofile-req">*</span>
+          </span>
+          <input
+            className="autofile-input"
+            type="text"
+            value={senderName}
+            onChange={(e) => setSenderName(e.target.value)}
+            placeholder="Franklin Heng"
+          />
+        </label>
+        <label className="autofile-field">
+          <span className="autofile-field-label">Organization (optional)</span>
+          <input
+            className="autofile-input"
+            type="text"
+            value={senderOrg}
+            onChange={(e) => setSenderOrg(e.target.value)}
+            placeholder="e.g. Data Science for Social Good"
+          />
+        </label>
+        <label className="autofile-field">
+          <span className="autofile-field-label">
+            Email <span className="autofile-req">*</span>
+          </span>
+          <input
+            className="autofile-input"
+            type="email"
+            value={senderEmail}
+            onChange={(e) => setSenderEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
+        </label>
+        <label className="autofile-field">
+          <span className="autofile-field-label">Phone (optional)</span>
+          <input
+            className="autofile-input"
+            type="tel"
+            value={senderPhone}
+            onChange={(e) => setSenderPhone(e.target.value)}
+            placeholder="(555) 555-1212"
+          />
+        </label>
+        <label className="autofile-field autofile-field-wide">
+          <span className="autofile-field-label">
+            Mailing address <span className="autofile-req">*</span>
+          </span>
+          <textarea
+            className="autofile-input autofile-textarea-small"
+            value={senderAddress}
+            onChange={(e) => setSenderAddress(e.target.value)}
+            placeholder={"123 Main St\nApt 4B\nSan Francisco, CA 94110"}
+            rows={3}
+          />
+        </label>
+      </div>
+
+      <div className="autofile-letter-section">
+        <div className="autofile-letter-head">
+          <span className="autofile-field-label">Letter to be sent</span>
+          <button
+            type="button"
+            className="autofile-link-btn"
+            onClick={() => setShowLetterEdit((v) => !v)}
+          >
+            {showLetterEdit ? "Hide" : "Edit letter"}
+          </button>
+        </div>
+        {hasPlaceholder && (
+          <div className="autofile-warning">
+            The letter still contains bracketed placeholders (e.g.{" "}
+            <code>[requester to provide]</code>). Click <em>Edit letter</em>{" "}
+            and replace them with your info before filing.
+          </div>
+        )}
+        {showLetterEdit ? (
+          <textarea
+            className="autofile-input autofile-letter-textarea"
+            value={letterText}
+            onChange={(e) => setLetterText(e.target.value)}
+            rows={18}
+            spellCheck={true}
+          />
+        ) : (
+          <pre className="autofile-letter-preview">{letterText}</pre>
+        )}
+      </div>
+
+      {error && <p className="autofile-error">{error}</p>}
+
+      <div className="autofile-actions">
+        <button
+          className="autofile-primary-btn"
+          onClick={handleConfirmAndQueue}
+          disabled={queueing || !canConfirm}
+          title={
+            !requiredFilled
+              ? "Fill in your name, email, and mailing address"
+              : hasPlaceholder
+                ? "Remove bracketed placeholders from the letter first"
+                : undefined
+          }
+        >
+          {queueing ? "Saving…" : "Confirm + start 30-minute window"}
+        </button>
+      </div>
+    </div>
   );
 }

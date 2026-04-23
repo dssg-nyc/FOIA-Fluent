@@ -52,6 +52,12 @@ CRITICAL RULES — ANTI-HALLUCINATION:
 - Use ONLY the agency information provided in the AGENCY INFORMATION section
 - If the context doesn't contain a relevant legal citation, say so — never guess
 
+CRITICAL RULES — REQUESTER CONTACT INFO:
+- Use EXACTLY the requester contact fields provided in the REQUESTER section
+- NEVER emit placeholder text such as "[requester to provide]", "[your email]", or any bracketed/blank placeholder in the letter
+- If a contact field (phone, address, organization) is blank in the REQUESTER section, OMIT that line entirely from the letter's contact block — do not leave a placeholder behind
+- Name and email are always present; phone, mailing address, and organization may be absent and should simply be skipped when absent
+
 === VERIFIED LEGAL CONTEXT ===
 
 STATUTE: {statute_title} ({statute_citation})
@@ -297,6 +303,9 @@ class FOIADrafter:
         agency: AgencyInfo,
         requester_name: str,
         requester_organization: str = "",
+        requester_email: str = "",
+        requester_phone: str = "",
+        requester_address: str = "",
         fee_waiver: bool = False,
         expedited_processing: bool = False,
         preferred_format: str = "electronic",
@@ -369,13 +378,25 @@ class FOIADrafter:
             time_limit_days="20",
         )
 
+        # Build a strict REQUESTER block. Blank fields are omitted entirely so
+        # the model can't backfill them with placeholders.
+        requester_lines = [f"Name: {requester_name}"]
+        if requester_organization:
+            requester_lines.append(f"Organization: {requester_organization}")
+        if requester_email:
+            requester_lines.append(f"Email: {requester_email}")
+        if requester_phone:
+            requester_lines.append(f"Phone: {requester_phone}")
+        if requester_address:
+            # Address may be multi-line; render it as a single block
+            requester_lines.append(f"Mailing Address: {requester_address}")
+        requester_block = "\n".join(requester_lines)
+
         user_msg = (
             f"RECORDS NEEDED: {description}\n\n"
-            f"REQUESTER: {requester_name}"
+            f"REQUESTER:\n{requester_block}\n\n"
+            f"PREFERRED FORMAT: {preferred_format}"
         )
-        if requester_organization:
-            user_msg += f", {requester_organization}"
-        user_msg += f"\nPREFERRED FORMAT: {preferred_format}"
         if fee_waiver:
             user_msg += "\nREQUESTING FEE WAIVER: Yes"
         if expedited_processing:

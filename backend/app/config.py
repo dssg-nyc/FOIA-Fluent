@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     admin_secret: str = ""
     # FOIA.gov API
     foia_gov_api_key: str = ""
+    # Resend (outbound FOIA submission emails + inbound agency replies)
+    resend_api_key: str = ""
+    resend_from_domain: str = "foiafluent.com"
+    resend_webhook_secret: str = ""  # for validating inbound webhooks
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

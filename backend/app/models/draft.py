@@ -29,6 +29,9 @@ class DraftRequest(BaseModel):
     agency: AgencyInfo
     requester_name: str
     requester_organization: str = ""
+    requester_email: str = ""
+    requester_phone: str = ""
+    requester_address: str = ""
     fee_waiver: bool = False
     expedited_processing: bool = False
     preferred_format: str = "electronic"

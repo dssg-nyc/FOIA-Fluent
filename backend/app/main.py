@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -5,7 +7,23 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 from app.config import settings
-from app.routes import admin, search, draft, tracking, hub, jurisdictions, insights, chat, signals, discoveries, saved_searches
+from app.routes import admin, search, draft, tracking, hub, jurisdictions, insights, chat, signals, discoveries, saved_searches, submissions, profile
+from app.services import submitter
+
+logger = logging.getLogger(__name__)
+
+
+async def _submission_queue_tick_loop():
+    """Background task: every 60s, pick up queued submission_runs whose
+    sends_at has passed and execute them. The atomic UPDATE guard in
+    submitter.execute_submission makes this safe even if multiple backend
+    replicas run the loop concurrently."""
+    while True:
+        try:
+            await asyncio.to_thread(submitter.process_queue_tick)
+        except Exception as e:
+            logger.exception(f"submission queue tick failed: {e}")
+        await asyncio.sleep(60)
 
 
 @asynccontextmanager
@@ -15,8 +33,16 @@ async def lifespan(app: FastAPI):
         timeout=30.0,
         headers={"Accept": "application/json"},
     )
-    yield
-    await app.state.http_client.aclose()
+    app.state.queue_task = asyncio.create_task(_submission_queue_tick_loop())
+    try:
+        yield
+    finally:
+        app.state.queue_task.cancel()
+        try:
+            await app.state.queue_task
+        except asyncio.CancelledError:
+            pass
+        await app.state.http_client.aclose()
 
 
 app = FastAPI(
@@ -44,6 +70,8 @@ app.include_router(chat.router, prefix="/api/v1")
 app.include_router(signals.router, prefix="/api/v1")
 app.include_router(discoveries.router, prefix="/api/v1")
 app.include_router(saved_searches.router, prefix="/api/v1")
+app.include_router(submissions.router, prefix="/api/v1")
+app.include_router(profile.router, prefix="/api/v1")
 
 
 @app.get("/health")

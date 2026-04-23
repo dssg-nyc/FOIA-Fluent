@@ -25,6 +25,9 @@ class TrackedRequest(BaseModel):
     letter_text: str
     requester_name: str
     requester_organization: str = ""
+    requester_email: str = ""
+    requester_phone: str = ""
+    requester_address: str = ""
     status: str = "draft"   # draft | submitted | awaiting_response | responded | partial | denied | appealed | fulfilled
     filed_date: Optional[str] = None    # ISO date
     due_date: Optional[str] = None      # ISO date (computed)
@@ -73,6 +76,9 @@ class TrackRequestPayload(BaseModel):
     letter_text: str
     requester_name: str
     requester_organization: str = ""
+    requester_email: str = ""
+    requester_phone: str = ""
+    requester_address: str = ""
     filed_date: Optional[str] = None
     # Research context (Phase 1 + 2 intelligence)
     statute_cited: str = ""
@@ -90,6 +96,13 @@ class UpdateRequestPayload(BaseModel):
     status: Optional[str] = None
     filed_date: Optional[str] = None
     description: Optional[str] = None
+    # Review-before-file fields — editable from the AutoFile card
+    letter_text: Optional[str] = None
+    requester_name: Optional[str] = None
+    requester_organization: Optional[str] = None
+    requester_email: Optional[str] = None
+    requester_phone: Optional[str] = None
+    requester_address: Optional[str] = None
 
 
 class AddCommunicationPayload(BaseModel):

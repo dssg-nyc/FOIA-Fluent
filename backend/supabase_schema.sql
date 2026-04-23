@@ -438,3 +438,81 @@ CREATE INDEX IF NOT EXISTS idx_saved_searches_user
 ALTER TABLE saved_searches
     ADD COLUMN IF NOT EXISTS result_snapshot JSONB DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS snapshot_at     TIMESTAMPTZ DEFAULT NULL;
+
+-- ── Auto-File Phase 1 (email + optional FOIA.gov API) ────────────────────────
+-- Fully automated FOIA submission. The user confirms a drafted request, a
+-- 30-minute QA window opens (cancellable), then the submitter cron picks up
+-- the queued row at `sends_at` and dispatches to the appropriate channel.
+-- Agency replies route back to us via Resend inbound webhook on the
+-- per-request Reply-To address and land in the existing `communications` log.
+
+-- Structured channel metadata per agency. Replaces free-text submission_notes
+-- for the agencies where we've verified a working filing channel.
+ALTER TABLE agency_profiles
+    ADD COLUMN IF NOT EXISTS submission_channels JSONB DEFAULT '[]';
+    -- Ordered list of channels, highest priority first. Each entry:
+    -- { "type": "foia_gov_api" | "email" | "portal" | "mail",
+    --   "endpoint": "https://api.foia.epa.gov/..." | "foia@epa.gov",
+    --   "priority": 1, "notes": "requires API key" }
+
+-- Per-filing attempt. One TrackedRequest can have multiple runs
+-- (initial attempt + retries or re-files).
+CREATE TABLE IF NOT EXISTS submission_runs (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id             UUID NOT NULL REFERENCES tracked_requests(id) ON DELETE CASCADE,
+    user_id                UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    channel                TEXT NOT NULL,            -- foia_gov_api | email | playwright | computer_use | pdf_mail
+    status                 TEXT NOT NULL DEFAULT 'queued',
+                                                     -- queued | submitting | awaiting_user | succeeded | failed | cancelled
+    queued_at              TIMESTAMPTZ DEFAULT NOW(),
+    sends_at               TIMESTAMPTZ,              -- cron picks up at this time
+    submitted_at           TIMESTAMPTZ,              -- when the actual outbound happened
+    completed_at           TIMESTAMPTZ,              -- terminal state reached
+    agency_tracking_number TEXT,                     -- parsed from agency receipt
+    receipt                JSONB DEFAULT '{}',       -- raw confirmation payload (email message id, API response, etc.)
+    log                    JSONB DEFAULT '[]',       -- ordered list of {ts, level, action, detail}
+    error                  TEXT,                     -- human-readable failure reason
+    cancel_reason          TEXT                      -- why user cancelled (optional)
+);
+
+CREATE INDEX IF NOT EXISTS idx_runs_user ON submission_runs (user_id, queued_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_request ON submission_runs (request_id, queued_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runs_ready ON submission_runs (sends_at) WHERE status = 'queued';
+
+ALTER TABLE submission_runs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_submission_runs" ON submission_runs
+    FOR ALL USING (auth.uid() = user_id);
+
+-- TrackedRequests gets the confirmation fields once a run succeeds.
+ALTER TABLE tracked_requests
+    ADD COLUMN IF NOT EXISTS submission_method    TEXT,
+    ADD COLUMN IF NOT EXISTS confirmation_number  TEXT,
+    ADD COLUMN IF NOT EXISTS submitted_at         TIMESTAMPTZ;
+
+-- ── User profiles ──────────────────────────────────────────────────────────
+-- Persistent sender info used for FOIA filings. One row per auth user.
+-- Populated either proactively (settings page) or on-demand (review-before-file
+-- step of the Auto-File card prompts for anything missing).
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id             UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name           TEXT DEFAULT '',
+    organization        TEXT DEFAULT '',
+    email               TEXT DEFAULT '',
+    phone               TEXT DEFAULT '',
+    mailing_address     TEXT DEFAULT '',
+    requester_category  TEXT DEFAULT 'other',   -- individual | media | commercial | noncommercial_scientific | educational | other
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_profile" ON user_profiles
+    FOR ALL USING (auth.uid() = user_id);
+
+-- TrackedRequests snapshots the sender contact block at draft / edit time so
+-- that changes to the user profile later don't mutate the letter that was filed.
+ALTER TABLE tracked_requests
+    ADD COLUMN IF NOT EXISTS requester_email    TEXT DEFAULT '',
+    ADD COLUMN IF NOT EXISTS requester_phone    TEXT DEFAULT '',
+    ADD COLUMN IF NOT EXISTS requester_address  TEXT DEFAULT '';

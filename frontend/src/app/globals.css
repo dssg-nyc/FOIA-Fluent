@@ -9524,3 +9524,402 @@ h3, h4, h5 {
     font-size: 2.1rem;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Auto-File card (/requests/[id] — draft state)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.autofile-card {
+  padding: 1.5rem 1.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  margin: 1rem 0 1.5rem 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.autofile-card-cta {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(24, 99, 220, 0.02),
+      rgba(24, 99, 220, 0.045)
+    ),
+    var(--surface);
+  border-color: rgba(24, 99, 220, 0.25);
+}
+
+.autofile-card-active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.autofile-card-success {
+  border-color: var(--green);
+  background: var(--green-bg);
+}
+
+.autofile-card-failed {
+  border-color: var(--red);
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.autofile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.autofile-eyebrow {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.autofile-eyebrow-primary {
+  color: var(--primary);
+}
+
+.autofile-eyebrow-success {
+  color: var(--green);
+}
+
+.autofile-eyebrow-failed {
+  color: var(--red);
+}
+
+.autofile-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.autofile-title {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 500;
+  letter-spacing: -0.018em;
+  color: var(--foreground);
+  margin: 0 0 0.5rem 0;
+}
+
+.autofile-body {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--foreground-soft);
+  margin: 0 0 1rem 0;
+}
+
+.autofile-body code {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.1rem 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xs);
+}
+
+.autofile-countdown {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  margin: 0.25rem 0 0.75rem 0;
+}
+
+.autofile-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.autofile-primary-btn {
+  padding: 0.65rem 1.35rem;
+  min-width: 200px;
+  background: var(--foreground);
+  color: white;
+  border: 1px solid var(--foreground);
+  border-radius: var(--radius-pill);
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.autofile-primary-btn:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.autofile-primary-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.autofile-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.autofile-cancel-btn {
+  padding: 0.55rem 1.1rem;
+  background: transparent;
+  color: var(--foreground-soft);
+  border: 1px solid var(--border-cool);
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.autofile-cancel-btn:hover:not(:disabled) {
+  background: var(--surface-elevated);
+  color: var(--foreground);
+  border-color: var(--foreground);
+}
+
+.autofile-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.autofile-error {
+  font-size: 0.85rem;
+  color: var(--red);
+  margin: 0.5rem 0;
+  line-height: 1.45;
+}
+
+/* ── Live agent log ─────────────────────────────────────────── */
+.autofile-log {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.autofile-log summary {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.autofile-log summary::before {
+  content: "▸";
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.autofile-log[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.autofile-log-list {
+  list-style: none;
+  margin: 0.75rem 0 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 260px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+}
+
+.autofile-log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  padding: 0.15rem 0;
+}
+
+.autofile-log-ts {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  width: 78px;
+}
+
+.autofile-log-action {
+  color: var(--foreground);
+}
+
+.autofile-log-warn .autofile-log-action {
+  color: var(--amber);
+}
+
+.autofile-log-error .autofile-log-action {
+  color: var(--red);
+}
+
+/* Review / edit form inside the CTA card */
+.autofile-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem 1rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.autofile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.autofile-field-wide {
+  grid-column: 1 / -1;
+}
+
+.autofile-field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--foreground-muted, #4a4a55);
+  letter-spacing: 0.01em;
+}
+
+.autofile-req {
+  color: var(--blue, #1863dc);
+}
+
+.autofile-input {
+  width: 100%;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--foreground);
+  background: #fff;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.autofile-input:focus {
+  outline: none;
+  border-color: var(--blue, #1863dc);
+  box-shadow: 0 0 0 3px rgba(24, 99, 220, 0.12);
+}
+
+.autofile-textarea-small {
+  resize: vertical;
+  min-height: 70px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.autofile-letter-section {
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding-top: 0.9rem;
+}
+
+.autofile-letter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.autofile-link-btn {
+  background: none;
+  border: none;
+  color: var(--blue, #1863dc);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+
+.autofile-link-btn:hover {
+  text-decoration: underline;
+}
+
+.autofile-warning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #9a3412;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin-bottom: 0.6rem;
+}
+
+.autofile-warning code {
+  background: rgba(154, 52, 18, 0.08);
+  padding: 0 0.25rem;
+  border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+.autofile-letter-preview {
+  background: #f7f7f8;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  font: inherit;
+  font-size: 0.87rem;
+  line-height: 1.55;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.autofile-letter-textarea {
+  min-height: 420px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (max-width: 640px) {
+  .autofile-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.autofile-card-portal {
+  background: #fffbf3;
+  border: 1px solid #fde3a7;
+}
+
+.autofile-eyebrow-warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.autofile-note {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--foreground-muted, #5a5a65);
+  background: rgba(253, 227, 167, 0.25);
+  border-left: 3px solid #f59e0b;
+  padding: 0.55rem 0.75rem;
+  border-radius: 4px;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.autofile-primary-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}

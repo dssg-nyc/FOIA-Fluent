@@ -38,6 +38,9 @@ export interface TrackedRequest {
   letter_text: string;
   requester_name: string;
   requester_organization: string;
+  requester_email?: string;
+  requester_phone?: string;
+  requester_address?: string;
   status: string;
   filed_date: string | null;
   due_date: string | null;
@@ -134,6 +137,13 @@ export interface UpdateRequestPayload {
   status?: string;
   filed_date?: string;
   description?: string;
+  // Review-before-file fields
+  letter_text?: string;
+  requester_name?: string;
+  requester_organization?: string;
+  requester_email?: string;
+  requester_phone?: string;
+  requester_address?: string;
 }
 
 export interface AddCommunicationPayload {
