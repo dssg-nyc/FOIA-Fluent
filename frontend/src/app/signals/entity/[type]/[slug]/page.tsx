@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import AuthGuard from "@/components/AuthGuard";
 import {
   fetchEntity,
   fetchEntitySignals,
@@ -154,9 +153,5 @@ function EntityPageInner() {
 }
 
 export default function EntityPage() {
-  return (
-    <AuthGuard>
-      <EntityPageInner />
-    </AuthGuard>
-  );
+  return <EntityPageInner />;
 }

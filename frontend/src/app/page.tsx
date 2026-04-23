@@ -15,7 +15,10 @@ export default function HomePage() {
     });
   }, []);
 
-  const primaryHref = signedIn ? "/hub" : "/login?next=/hub";
+  // /hub is public, so the primary CTA always routes there. Only the label
+  // changes based on auth state — "Open the app" reads naturally for a
+  // returning user, "Start exploring" invites first-time visitors in.
+  const primaryHref = "/hub";
   const primaryLabel = signedIn ? "Open the app" : "Start exploring";
 
   return (
