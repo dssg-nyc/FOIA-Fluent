@@ -343,7 +343,7 @@ def get_patterns(
             sigs_result = (
                 supabase.table("foia_signals_feed")
                 .select(
-                    "id,source,source_id,title,summary,signal_date,requester,source_url,entities"
+                    "id,source,source_id,title,summary,signal_date,requester,source_url,entities,entity_slugs"
                 )
                 .in_("id", all_signal_ids)
                 .execute()
