@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     admin_secret: str = ""
     # FOIA.gov API
     foia_gov_api_key: str = ""
+    # api.data.gov unified key — unlocks regulations.gov, FEC, and many other
+    # federal APIs. Free signup at https://api.data.gov/signup/
+    api_data_gov_key: str = ""
+    # api.congress.gov uses its OWN key system (separate from api.data.gov).
+    # Free signup at https://api.congress.gov/sign-up/
+    congress_gov_api_key: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

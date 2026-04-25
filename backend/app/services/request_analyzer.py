@@ -143,7 +143,7 @@ class RequestAnalyzer:
         )
 
         message = await self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2000,
             system="You are a FOIA expert. Return only valid JSON.",
             messages=[{"role": "user", "content": system_prompt}],

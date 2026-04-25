@@ -364,6 +364,72 @@ def get_patterns(
     return patterns
 
 
+def get_global_stats() -> dict:
+    """Lightweight global stats for the /signals page header.
+
+    Returns the all-time signal count, visible pattern count, enabled-source
+    count from the registry, and the most recent ingest timestamp. Cheap —
+    three indexed COUNTs and one max() — so frontend can call on every
+    dashboard load.
+    """
+    supabase = _get_supabase()
+    if not supabase:
+        return {
+            "total_signals": 0,
+            "total_patterns_visible": 0,
+            "sources_enabled": 0,
+            "last_ingested_at": None,
+        }
+
+    from app.data.signals_sources import enabled_sources
+
+    total_signals = 0
+    total_patterns_visible = 0
+    last_ingested_at: Optional[str] = None
+    try:
+        sig = (
+            supabase.table("foia_signals_feed")
+            .select("id", count="exact")
+            .limit(1)
+            .execute()
+        )
+        total_signals = sig.count or 0
+    except Exception as e:
+        logger.warning(f"global_stats: signals count failed: {e}")
+
+    try:
+        pat = (
+            supabase.table("signal_patterns")
+            .select("id", count="exact")
+            .eq("visible", True)
+            .limit(1)
+            .execute()
+        )
+        total_patterns_visible = pat.count or 0
+    except Exception as e:
+        logger.warning(f"global_stats: patterns count failed: {e}")
+
+    try:
+        recent = (
+            supabase.table("foia_signals_feed")
+            .select("ingested_at")
+            .order("ingested_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if recent.data:
+            last_ingested_at = recent.data[0].get("ingested_at")
+    except Exception as e:
+        logger.warning(f"global_stats: last_ingested fetch failed: {e}")
+
+    return {
+        "total_signals": total_signals,
+        "total_patterns_visible": total_patterns_visible,
+        "sources_enabled": len(enabled_sources()),
+        "last_ingested_at": last_ingested_at,
+    }
+
+
 def get_public_sample(per_persona: int = 1, max_patterns: int = 3) -> dict:
     """Public sample for the marketing landing page (no auth).
     Returns:
@@ -410,8 +476,10 @@ def get_public_sample(per_persona: int = 1, max_patterns: int = 3) -> dict:
         )
         total_signals = total_res.count or 0
 
-        # Get per-source counts
-        for source in ["epa_echo", "fda_warning_letters", "dhs_foia_log", "gao_protests"]:
+        # Get per-source counts — registry-driven so adding a source in
+        # app.data.signals_sources is the only step needed.
+        from app.data.signals_sources import source_ids
+        for source in source_ids():
             r = (
                 supabase.table("foia_signals_feed")
                 .select("id", count="exact")

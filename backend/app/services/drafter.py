@@ -159,8 +159,10 @@ class FOIADrafter:
         if agencies_hint:
             user_msg += f"\n\nHint: The following agencies were identified during discovery: {', '.join(agencies_hint)}"
 
+        # Haiku — bounded classification task (pick 1 of ~100 agencies); no
+        # reasoning gain from Sonnet, ~3× cheaper.
         message = await self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1000,
             system=prompt,
             messages=[{"role": "user", "content": user_msg}],
@@ -382,7 +384,7 @@ class FOIADrafter:
             user_msg += "\nREQUESTING EXPEDITED PROCESSING: Yes"
 
         message = await self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=3000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_msg}],

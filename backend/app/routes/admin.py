@@ -15,10 +15,11 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from app.config import settings
 from app.services.agency_profiles import _get_supabase
+from app.services import signals_health
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -146,3 +147,50 @@ async def refresh_agency_cfr_text(
         "failed": failed,
         "stale_count": len(agencies),
     }
+
+
+@router.get("/signals-health")
+async def get_signals_health_route(
+    x_admin_secret: str = Header(default="", alias="X-Admin-Secret"),
+):
+    """Per-source health snapshot for the signals ingest pipeline.
+
+    Returns status, 7-day activity, Claude token usage, and projected
+    monthly cost for every source in the registry. Sorted so failing
+    sources surface first.
+    """
+    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid or missing admin secret")
+    return signals_health.get_signals_health()
+
+
+@router.get("/signals-health/runs")
+async def get_signals_recent_runs_route(
+    source_id: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    x_admin_secret: str = Header(default="", alias="X-Admin-Secret"),
+):
+    """Raw run rows for a specific source (or recent across all sources).
+
+    Use this to drill into a failing source and read the error_message.
+    """
+    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid or missing admin secret")
+    return {"runs": signals_health.get_recent_runs(source_id=source_id, limit=limit)}
+
+
+@router.post("/patterns/run")
+async def force_run_patterns_route(
+    x_admin_secret: str = Header(default="", alias="X-Admin-Secret"),
+):
+    """Trigger an immediate pattern-detection run, bypassing the 12h debounce.
+
+    Used by the admin dashboard 'Run patterns now' button. Synchronous —
+    waits for the Claude call to complete (~30s) before returning. Returns
+    the run summary so the dashboard can show inserted-pattern counts.
+    """
+    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid or missing admin secret")
+    from app.services.ingest.runner import force_run_pattern_detection
+    result = await force_run_pattern_detection()
+    return result

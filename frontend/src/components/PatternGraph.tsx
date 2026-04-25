@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   forceCenter,
@@ -309,6 +309,15 @@ type GraphProps =
       // galaxy (along with any entities that become orphaned). Used to sync
       // the galaxy with the dashboard's source filter.
       visibleSources?: Set<string>;
+      // When provided, clicking a cluster (node or card) calls this instead
+      // of routing to the standalone /signals/patterns/[id] page. The
+      // dashboard uses this to open an in-page drawer.
+      onPatternSelect?: (patternId: string) => void;
+      // When set, that cluster reads as "sticky-hovered": its color stays at
+      // full opacity while every other cluster dims. Lets the drawer keep
+      // the galaxy isolated to the selected pattern even when the mouse
+      // leaves the canvas.
+      selectedPatternId?: string | null;
     }
   | {
       mode: "detail";
@@ -318,7 +327,7 @@ type GraphProps =
       onSignalClick?: (signalId: string) => void;
     };
 
-export default function PatternGraph(props: GraphProps) {
+function PatternGraphImpl(props: GraphProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -352,6 +361,11 @@ export default function PatternGraph(props: GraphProps) {
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
   const panStart = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  // First-render-only fit: compute global node bounds once the simulation
+  // has settled, then zoom/translate so all clusters fit inside the viewport
+  // with padding. Without this the default k=1 clips clusters at the edges
+  // when the corpus has many patterns.
+  const initialFitDone = useRef(false);
 
   // Measure container width
   useEffect(() => {
@@ -365,27 +379,46 @@ export default function PatternGraph(props: GraphProps) {
     return () => window.removeEventListener("resize", update);
   }, []);
 
+  // Pull only the inputs the graph topology actually depends on, so re-renders
+  // triggered by hover/select state don't invalidate `built` and restart the
+  // simulation (the main source of lag on the dashboard).
+  const galaxyPatterns = props.mode === "galaxy" ? props.patterns : null;
+  const galaxyVisibleSources =
+    props.mode === "galaxy" ? props.visibleSources : null;
+  const detailPattern = props.mode === "detail" ? props.pattern : null;
+  const detailSignals = props.mode === "detail" ? props.signals : null;
+
   const built = useMemo(() => {
     if (props.mode === "galaxy") {
       // Apply visibleSources filter by cloning patterns with evidence_signals
       // reduced to the allowed sources. Empty/unset set => no filtering.
-      const visible = props.visibleSources;
-      const filtered = !visible || visible.size === 0
-        ? props.patterns
-        : props.patterns.map((p) => ({
-            ...p,
-            evidence_signals: (p.evidence_signals || []).filter((s) =>
-              visible.has(s.source),
-            ),
-          }));
+      const visible = galaxyVisibleSources;
+      const patterns = galaxyPatterns || [];
+      const filtered =
+        !visible || visible.size === 0
+          ? patterns
+          : patterns.map((p) => ({
+              ...p,
+              evidence_signals: (p.evidence_signals || []).filter((s) =>
+                visible.has(s.source),
+              ),
+            }));
       return buildGalaxyGraph(filtered);
     }
+    const pat = detailPattern!;
     return {
-      ...buildDetailGraph(props.pattern, props.signals),
-      patternIds: [props.pattern.id],
-      patternColorMap: new Map<string, string>([[props.pattern.id, CLUSTER_PALETTE[0]]]),
+      ...buildDetailGraph(pat, detailSignals || []),
+      patternIds: [pat.id],
+      patternColorMap: new Map<string, string>([[pat.id, CLUSTER_PALETTE[0]]]),
     };
-  }, [props]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props.mode,
+    galaxyPatterns,
+    galaxyVisibleSources,
+    detailPattern,
+    detailSignals,
+  ]);
 
   // Centroid map for cluster halos + overlay cards. Stable across renders
   // since it only depends on pattern IDs + canvas size.
@@ -490,21 +523,30 @@ export default function PatternGraph(props: GraphProps) {
 
   // ── Hover helpers ─────────────────────────────────────────────────────────
 
+  // In galaxy mode, an explicit `selectedPatternId` (drawer is open on that
+  // cluster) acts as a sticky hover so isolation persists when the mouse
+  // leaves the canvas. Live hover always wins over the sticky selection so
+  // the user can still peek at neighbouring clusters with the drawer open.
+  const selectedPatternId =
+    props.mode === "galaxy" ? props.selectedPatternId ?? null : null;
+
   function hoveredClusterIds(): Set<string> | null {
-    if (!hovered) return null;
-    const h = nodeById.get(hovered);
-    if (!h) return null;
-    const ids =
-      h.patternIds && h.patternIds.length > 0
-        ? h.patternIds
-        : h.patternId
-        ? [h.patternId]
-        : [];
-    return new Set(ids);
+    if (hovered) {
+      const h = nodeById.get(hovered);
+      if (!h) return null;
+      const ids =
+        h.patternIds && h.patternIds.length > 0
+          ? h.patternIds
+          : h.patternId
+          ? [h.patternId]
+          : [];
+      return new Set(ids);
+    }
+    if (selectedPatternId) return new Set([selectedPatternId]);
+    return null;
   }
 
   function isNodeDimmed(n: GraphNode): boolean {
-    if (!hovered) return false;
     if (props.mode === "galaxy") {
       const focus = hoveredClusterIds();
       if (!focus || focus.size === 0) return false;
@@ -512,6 +554,7 @@ export default function PatternGraph(props: GraphProps) {
         n.patternIds && n.patternIds.length > 0 ? n.patternIds : [n.patternId ?? ""];
       return !nPatterns.some((p) => focus.has(p));
     }
+    if (!hovered) return false;
     if (n.id === hovered) return false;
     for (const l of built.links) {
       const s = typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
@@ -522,22 +565,21 @@ export default function PatternGraph(props: GraphProps) {
   }
 
   function isLinkDimmed(l: GraphLink): boolean {
-    if (!hovered) return false;
-    const s = typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
-    const t = typeof l.target === "string" ? l.target : (l.target as GraphNode).id;
     if (props.mode === "galaxy") {
       const focus = hoveredClusterIds();
       if (!focus || focus.size === 0) return false;
       return !focus.has(l.patternId ?? "");
     }
+    if (!hovered) return false;
+    const s = typeof l.source === "string" ? l.source : (l.source as GraphNode).id;
+    const t = typeof l.target === "string" ? l.target : (l.target as GraphNode).id;
     return !(s === hovered || t === hovered);
   }
 
   // Entity labels only appear when either the entity is hovered, or its
-  // cluster is hovered. Keeps the canvas clean by default.
+  // cluster is hovered/selected. Keeps the canvas clean by default.
   function isEntityLabelVisible(n: GraphNode): boolean {
-    if (!hovered) return false;
-    if (n.id === hovered) return true;
+    if (hovered && n.id === hovered) return true;
     const focus = hoveredClusterIds();
     if (!focus || focus.size === 0) return false;
     const nPatterns =
@@ -565,7 +607,9 @@ export default function PatternGraph(props: GraphProps) {
           .sort((a, b) => b.non_obviousness_score - a.non_obviousness_score)[0];
         targetPid = best?.id ?? n.patternIds[0];
       }
-      if (targetPid) router.push(`/signals/patterns/${targetPid}`);
+      if (!targetPid) return;
+      if (props.onPatternSelect) props.onPatternSelect(targetPid);
+      else router.push(`/signals/patterns/${targetPid}`);
       return;
     }
     if (n.kind === "entity" && n.entityType && n.entitySlug) {
@@ -759,6 +803,47 @@ export default function PatternGraph(props: GraphProps) {
     // cards) track node positions as the simulation runs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [built, width, height, tick]);
+
+  // Auto-fit on first settled simulation pass — zoom/translate the viewport
+  // so every node is visible with comfortable padding. Runs once.
+  useEffect(() => {
+    if (initialFitDone.current) return;
+    if (props.mode !== "galaxy") return;
+    if (tick < 15) return; // wait for simulation to roughly settle
+    if (!width || !height) return;
+    if (!built.nodes.length) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of built.nodes) {
+      if (n.x === undefined || n.y === undefined) continue;
+      minX = Math.min(minX, n.x);
+      maxX = Math.max(maxX, n.x);
+      minY = Math.min(minY, n.y);
+      maxY = Math.max(maxY, n.y);
+    }
+    if (!isFinite(minX) || maxX <= minX || maxY <= minY) return;
+
+    // Pad in both screen pixels and simulation units so cluster labels
+    // (which extend outside the node footprint) don't get clipped.
+    const padding = mobile ? 40 : 100;
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const kFit = Math.min(
+      (width - 2 * padding) / contentW,
+      (height - 2 * padding) / contentH,
+    );
+    // Clamp: don't zoom in past 1.0, don't zoom out below 0.45.
+    const k = Math.max(0.45, Math.min(1.0, kFit));
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    setTransform({
+      x: width / 2 - cx * k,
+      y: height / 2 - cy * k,
+      k,
+    });
+    initialFitDone.current = true;
+  }, [tick, width, height, built.nodes, props.mode, mobile]);
 
   return (
     <div ref={containerRef} className="pattern-graph">
@@ -959,19 +1044,26 @@ export default function PatternGraph(props: GraphProps) {
             const color = galaxyData.patternColorMap.get(p.id) ?? "var(--primary)";
             const focus = hoveredClusterIds();
             const dim = focus && !focus.has(p.id);
+            const isSelected = selectedPatternId === p.id;
             const count = (p.evidence_signals || []).length;
             return (
               <button
                 key={p.id}
                 type="button"
-                className="pattern-graph-cluster-card"
+                className={`pattern-graph-cluster-card${
+                  isSelected ? " pattern-graph-cluster-card-selected" : ""
+                }`}
                 style={{
                   left: pos.x,
                   top: pos.y,
                   borderColor: color,
                   opacity: dim ? 0.4 : 1,
                 }}
-                onClick={() => router.push(`/signals/patterns/${p.id}`)}
+                onClick={() => {
+                  if (props.mode !== "galaxy") return;
+                  if (props.onPatternSelect) props.onPatternSelect(p.id);
+                  else router.push(`/signals/patterns/${p.id}`);
+                }}
                 onMouseEnter={() => {
                   // Hovering the card highlights the cluster by fake-hovering its centroid.
                   const firstNode = built.nodes.find((n) => n.patternId === p.id);
@@ -1048,3 +1140,6 @@ export default function PatternGraph(props: GraphProps) {
     </div>
   );
 }
+
+const PatternGraph = memo(PatternGraphImpl);
+export default PatternGraph;

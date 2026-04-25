@@ -112,8 +112,11 @@ class LetterGenerator:
             original_request=request.letter_text,
         )
 
+        # Haiku — follow-up letters are formulaic reminders that quote the
+        # original request. No reasoning needed; Haiku matches Sonnet quality
+        # at 3× lower cost.
         message = await self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             max_tokens=2000,
             system="You are a FOIA attorney. Return only the letter text.",
             messages=[{"role": "user", "content": prompt}],
@@ -164,7 +167,7 @@ class LetterGenerator:
         )
 
         message = await self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2500,
             system="You are a FOIA attorney. Return only the letter text.",
             messages=[{"role": "user", "content": prompt}],

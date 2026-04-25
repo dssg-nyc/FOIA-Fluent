@@ -21,7 +21,18 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-PILOT_PERSONAS = ["journalist", "pharma_analyst", "hedge_fund", "environmental"]
+from app.data.signal_categories import (
+    CATEGORIES,
+    PERSONAS,
+    categories_for_signal,
+    derive_persona_tags,
+    filter_categories,
+)
+
+# Deprecated alias for back-compat with any straggler imports.
+# Phase 2.5 made personas a derived view over categories — see
+# app/data/signal_categories.py.
+PILOT_PERSONAS = PERSONAS
 
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 CLAUDE_MAX_TOKENS = 800
@@ -114,7 +125,7 @@ EXTRACT_SIGNAL_TOOL = {
     "description": "Extract structured fields from a raw FOIA-related signal.",
     "input_schema": {
         "type": "object",
-        "required": ["summary", "entities", "persona_tags", "priority"],
+        "required": ["summary", "entities", "category_tags", "priority"],
         "properties": {
             "summary": {
                 "type": "string",
@@ -132,17 +143,18 @@ EXTRACT_SIGNAL_TOOL = {
                     "dollar_amounts": {"type": "array", "items": {"type": "string"}},
                 },
             },
-            "persona_tags": {
+            "category_tags": {
                 "type": "array",
                 "description": (
-                    "Subset of these 4 personas this signal is concretely relevant to: "
-                    "journalist, pharma_analyst, hedge_fund, environmental. "
-                    "Be conservative — only include a persona if the relevance is direct "
-                    "and verifiable from the signal text. Empty array is acceptable."
+                    "Subset of canonical content categories this signal belongs to. "
+                    "Categories describe WHAT the signal is about, not WHO would care. "
+                    "Be conservative — only include a category if the signal clearly "
+                    "matches it. 1-3 tags is typical; >5 tags is almost never right. "
+                    "Empty array is acceptable if nothing fits."
                 ),
                 "items": {
                     "type": "string",
-                    "enum": PILOT_PERSONAS,
+                    "enum": CATEGORIES,
                 },
             },
             "priority": {
@@ -167,6 +179,38 @@ EXTRACT_SIGNAL_TOOL = {
 }
 
 
+_CATEGORY_GUIDE = """The 20 valid categories (pick by content topic, not audience):
+
+ENFORCEMENT & OVERSIGHT:
+- agency_enforcement: any federal-agency enforcement action (OSHA, FERC, FCC, NLRB, EPA, etc.)
+- agency_warnings: pre-enforcement warnings (FDA warning letters, preliminary citations)
+- oversight_findings: IG reports, GAO audits, oversight.gov aggregator
+- securities_litigation: SEC enforcement, litigation releases, EDGAR filings
+- campaign_finance: FEC enforcement (MURs)
+- tax_enforcement: IRS / TIGTA actions
+
+RECALLS & SAFETY:
+- drug_recalls: pharmaceuticals
+- food_recalls: food + cosmetics (FDA + USDA FSIS)
+- device_recalls: medical devices
+- vehicle_recalls: NHTSA
+- consumer_product_recalls: CPSC
+- workplace_safety: OSHA workplace incidents
+
+COURTS & LEGAL:
+- court_opinions: federal court decisions / opinions
+- government_litigation: DOJ press releases, agency-as-plaintiff actions
+- foia_logs: rows from agency FOIA request logs
+
+SPENDING & POLICY:
+- federal_contracts: contract awards, GAO bid protests, SAM.gov
+- regulatory_dockets: regulations.gov rulemaking dockets
+- legislation: Congress.gov bills, committee actions
+- executive_actions: WH / agency rule announcements
+- lobbying_ethics: Senate LDA, OGE filings, ethics matters
+"""
+
+
 def build_extraction_prompt(source_label: str, title: str, body_excerpt: str) -> str:
     return f"""You are an extraction agent for a FOIA intelligence platform.
 
@@ -182,17 +226,17 @@ BODY:
 
 Extract structured fields and return them via the extract_signal tool.
 
-CONSERVATIVE RULES:
-- Only tag personas where the relevance is direct and verifiable from the text above.
-- Do NOT speculate about who might find this interesting.
-- An empty persona_tags array is acceptable if nothing fits.
-- Set priority=2 only if the signal clearly involves: a publicly traded company, a major federal agency action, a dollar amount in the millions+, or a named individual of public interest.
+{_CATEGORY_GUIDE}
 
-The 4 valid personas:
-- journalist: relevant for accountability reporting, peer-FOIA awareness, named officials, agency mismanagement
-- pharma_analyst: relevant for FDA actions, drug substances, GMP/CMO findings, healthcare regulation
-- hedge_fund: relevant if a publicly traded company is named or there is a clear material financial implication
-- environmental: relevant for EPA actions, NEPA, ESA, pollution, land use, climate
+CONSERVATIVE RULES:
+- Tag with categories that match the signal's CONTENT — what it's about, not
+  who might care.
+- 1-3 categories is typical. If you're tagging more than 5, you're probably
+  matching loosely; tighten up.
+- Empty category_tags is acceptable if nothing fits cleanly. Do not stretch.
+- Set priority=2 only if the signal clearly involves: a publicly traded company,
+  a major federal agency action, a dollar amount in the millions+, or a named
+  individual of public interest.
 """
 
 
@@ -206,10 +250,28 @@ async def extract_with_claude(
     timeout: float = 45.0,
 ) -> Optional[dict]:
     """Single Claude call with forced tool-use. Returns the parsed extract dict
-    or None on failure (caller should fall back to a minimal record).
+    or None on failure. Legacy callers should use this; the runner uses
+    `extract_with_claude_instrumented` when it needs token counts.
+    """
+    extract, _in, _out = await extract_with_claude_instrumented(
+        api_key, source_label, title, body_excerpt, timeout=timeout
+    )
+    return extract
+
+
+async def extract_with_claude_instrumented(
+    api_key: str,
+    source_label: str,
+    title: str,
+    body_excerpt: str,
+    timeout: float = 45.0,
+) -> tuple[Optional[dict], int, int]:
+    """Same as extract_with_claude but also returns (input_tokens, output_tokens)
+    from the Anthropic API response. Used by the ingest runner for cost
+    tracking; (0, 0) on failure.
     """
     if not api_key:
-        return None
+        return None, 0, 0
 
     prompt = build_extraction_prompt(source_label, title, body_excerpt[:6000])
 
@@ -236,15 +298,18 @@ async def extract_with_claude(
             data = resp.json()
         except Exception as e:
             logger.warning(f"Claude extraction failed: {e}")
-            return None
+            return None, 0, 0
 
-    # Find the tool_use block
+    usage = data.get("usage") or {}
+    in_toks = int(usage.get("input_tokens") or 0)
+    out_toks = int(usage.get("output_tokens") or 0)
+
     for block in data.get("content", []):
         if block.get("type") == "tool_use" and block.get("name") == "extract_signal":
-            return block.get("input", {}) or {}
+            return block.get("input", {}) or {}, in_toks, out_toks
 
     logger.warning("Claude returned no tool_use block")
-    return None
+    return None, in_toks, out_toks
 
 
 # ── Dedup ───────────────────────────────────────────────────────────────────
@@ -270,6 +335,25 @@ def already_exists(supabase, source: str, source_id: str) -> bool:
 
 # ── Upsert ──────────────────────────────────────────────────────────────────
 
+def _clamp_signal_date(d: Any) -> datetime:
+    """Defensive clamp: future-dated signals (some upstream feeds — notably
+    CourtListener's Atom <updated> field — emit hearing dates or scheduling
+    metadata that point years into the future) sort to the top of the feed
+    and poison pattern detection's recency window. Cap any signal_date at
+    'now' so the feed stays sane regardless of feed quirks."""
+    now = datetime.now(timezone.utc)
+    if isinstance(d, str):
+        try:
+            d = datetime.fromisoformat(d.replace("Z", "+00:00"))
+        except Exception:
+            return now
+    if not isinstance(d, datetime):
+        return now
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d if d <= now else now
+
+
 def upsert_signal(
     supabase,
     *,
@@ -286,8 +370,15 @@ def upsert_signal(
     priority: int,
     metadata: dict[str, Any],
     requester: str = "",
+    category_tags: Optional[list[str]] = None,
 ) -> bool:
-    """Idempotent upsert keyed on (source, source_id). Returns True on success."""
+    """Idempotent upsert keyed on (source, source_id). Returns True on success.
+
+    `category_tags` is the new Phase 2.5 field. `persona_tags` is still written
+    (derived from category_tags via PERSONA_BUNDLES) for back-compat with the
+    existing UI/API that filters by personas.
+    """
+    clamped = _clamp_signal_date(signal_date)
     row = {
         "source": source,
         "source_id": source_id,
@@ -295,11 +386,12 @@ def upsert_signal(
         "summary": (summary or "")[:1000],
         "body_excerpt": (body_excerpt or "")[:5000],
         "source_url": source_url or "",
-        "signal_date": signal_date.isoformat() if isinstance(signal_date, datetime) else signal_date,
+        "signal_date": clamped.isoformat(),
         "ingested_at": datetime.now(timezone.utc).isoformat(),
         "agency_codes": agency_codes or [],
         "entities": entities or {},
         "entity_slugs": build_entity_slugs(entities or {}, requester or ""),
+        "category_tags": category_tags or [],
         "persona_tags": persona_tags or [],
         "priority": int(priority or 0),
         "requester": (requester or "")[:300],
@@ -338,14 +430,16 @@ async def process_item(
 
     extract = await extract_with_claude(api_key, source_label, title, body_excerpt) or {}
 
-    summary      = extract.get("summary", "")
-    entities     = extract.get("entities", {}) or {}
-    persona_tags = extract.get("persona_tags", []) or []
-    priority     = extract.get("priority", 0)
+    summary       = extract.get("summary", "")
+    entities      = extract.get("entities", {}) or {}
+    # Union Claude's categories with the source's defaults so every signal
+    # ends up with at least its source-natural tag (Phase 2.5).
+    category_tags = categories_for_signal(source, extract.get("category_tags", []))
+    priority      = extract.get("priority", 0)
     claude_requester = (extract.get("requester") or "").strip()
 
-    # Defensive: drop any persona tags that aren't in the pilot set
-    persona_tags = [p for p in persona_tags if p in PILOT_PERSONAS]
+    # Personas are derived from categories now (Phase 2.5).
+    persona_tags = derive_persona_tags(category_tags)
 
     # If the caller didn't pass an explicit requester, use Claude's extracted one
     if not requester and claude_requester:
@@ -363,6 +457,7 @@ async def process_item(
         agency_codes=default_agency_codes or [],
         entities=entities,
         persona_tags=persona_tags,
+        category_tags=category_tags,
         priority=priority,
         metadata=extra_metadata or {},
         requester=requester,

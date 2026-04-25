@@ -438,3 +438,49 @@ CREATE INDEX IF NOT EXISTS idx_saved_searches_user
 ALTER TABLE saved_searches
     ADD COLUMN IF NOT EXISTS result_snapshot JSONB DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS snapshot_at     TIMESTAMPTZ DEFAULT NULL;
+
+-- ── Signals source runs (health tracking) ──────────────────────────────────
+-- One row per (source, run) for the signals ingest pipeline. Powers the admin
+-- health dashboard and is read by the cron dispatcher to decide which sources
+-- are due. No RLS: admin-only read via X-Admin-Secret header.
+
+CREATE TABLE IF NOT EXISTS signals_source_runs (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id             TEXT NOT NULL,
+    started_at            TIMESTAMPTZ DEFAULT NOW(),
+    completed_at          TIMESTAMPTZ,
+    status                TEXT NOT NULL,
+    -- 'succeeded' | 'failed' | 'skipped_cadence' | 'skipped_disabled' | 'running'
+    items_fetched         INT DEFAULT 0,
+    items_inserted        INT DEFAULT 0,
+    items_skipped_dup     INT DEFAULT 0,
+    items_failed          INT DEFAULT 0,
+    claude_input_tokens   INT DEFAULT 0,
+    claude_output_tokens  INT DEFAULT 0,
+    error_message         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_runs_source
+    ON signals_source_runs (source_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_source_runs_recent
+    ON signals_source_runs (started_at DESC);
+
+-- ── Phase 2.5: Category taxonomy + persona bundles ──────────────────────────
+-- Categories are the new tagging primitive on signals. persona_tags continues
+-- to exist but is now derived from category_tags via PERSONA_BUNDLES (in
+-- backend/app/data/signal_categories.py).
+
+ALTER TABLE foia_signals_feed
+    ADD COLUMN IF NOT EXISTS category_tags TEXT[] DEFAULT '{}';
+
+CREATE INDEX IF NOT EXISTS idx_signals_categories
+    ON foia_signals_feed USING GIN (category_tags);
+
+-- Persona-bundle membership stored in DB so it can be queried directly
+-- (frontend / SQL ad-hoc reporting). Mirrors the in-code PERSONA_BUNDLES.
+ALTER TABLE personas
+    ADD COLUMN IF NOT EXISTS category_ids TEXT[] DEFAULT '{}';
+
+-- ── Phase 2.5: Run-level metadata (for PDF-URL dedup, etc.) ─────────────────
+ALTER TABLE signals_source_runs
+    ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';

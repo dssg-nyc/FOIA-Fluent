@@ -25,7 +25,9 @@ class Signal(BaseModel):
     ingested_at: datetime | None = None
     agency_codes: list[str] = Field(default_factory=list)
     entities: dict[str, Any] = Field(default_factory=dict)
+    entity_slugs: list[str] = Field(default_factory=list)
     persona_tags: list[str] = Field(default_factory=list)
+    category_tags: list[str] = Field(default_factory=list)
     priority: int = 0
     requester: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
