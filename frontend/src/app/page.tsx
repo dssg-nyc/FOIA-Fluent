@@ -57,17 +57,18 @@ export default function HomePage() {
       {/* HERO */}
       <section className="home-hero">
         <div className="home-inner">
-          <span className="home-eyebrow">Open source · Civic AI</span>
+          <span className="home-eyebrow">Civic intelligence for public records</span>
           <h1 className="home-hero-title">
             Find public records.
             <br />
             File what doesn&rsquo;t exist yet.
           </h1>
           <p className="home-hero-sub">
-            FOIA Fluent is a civic AI platform for public records research.
-            Search what&rsquo;s already public. Draft optimized requests grounded
-            in verified statute. Track agency responses. Watch federal activity
-            in real time. All in one workspace.
+            FOIA Fluent is a workspace for public records research. Search
+            what is already out there. When records do not exist yet, draft a
+            request grounded in real statute text and agency rules. Track
+            agency responses through resolution. Watch new federal activity
+            as it lands.
           </p>
           <div className="home-cta-row">
             <Link href={primaryHref} className="home-cta-primary">
@@ -141,17 +142,17 @@ export default function HomePage() {
               Find what already exists. Draft what doesn&rsquo;t.
             </h3>
             <p className="home-spotlight-body">
-              Search MuckRock, DocumentCloud, and the open web in one unified
-              three pane view. When nothing turns up, Claude drafts the request
-              for you, grounded in real statute text, agency CFR regulations
-              from eCFR, and MuckRock outcomes. It cannot cite law from its
-              training data.
+              Search MuckRock, DocumentCloud, and the open web side by side.
+              When nothing turns up, the AI drafts the request for you,
+              grounded in real statute text, agency CFR regulations from eCFR,
+              and outcomes from similar past requests. The model is constrained
+              to verified sources, so it cannot invent legal citations.
             </p>
             <ul className="home-spotlight-list">
-              <li>Unified search across three public document sources</li>
-              <li>Automatic agency identification with alternatives</li>
-              <li>Drafts grounded in verified legal context</li>
-              <li>Save any discovery to a persistent research library</li>
+              <li>Search three public document sources in one place</li>
+              <li>Automatic agency identification, with alternatives ranked</li>
+              <li>Drafts grounded in verified statute and agency rules</li>
+              <li>Save any document to a persistent research library</li>
             </ul>
             <Link href={signedIn ? "/draft" : "/login?next=/draft"} className="home-spotlight-link">
               Try Discover &amp; Draft →
@@ -173,20 +174,20 @@ export default function HomePage() {
           <div className="home-spotlight-text">
             <span className="home-eyebrow">Live FOIA Signals</span>
             <h3 className="home-spotlight-title">
-              The federal record, in real time.
+              The federal record, as it lands.
             </h3>
             <p className="home-spotlight-body">
               Every new enforcement action, warning letter, bid protest, and
-              FOIA filing from federal sources. AI summarizes each record the
-              moment it&rsquo;s released and surfaces the cross source patterns
-              running through them. Interactive galaxy visualization. Persona
-              filters for your role.
+              FOIA filing from federal sources. Each record is summarized as
+              soon as it is published, then connected to other records that
+              touch the same company, agency, or investigation. Filter the
+              feed to the kind of work you do.
             </p>
             <ul className="home-spotlight-list">
-              <li>Daily AI-detected cross source patterns</li>
-              <li>Interactive force directed graph of signal clusters</li>
-              <li>Day grouped live feed with slide in detail view</li>
-              <li>Free to explore without an account</li>
+              <li>Cross source patterns refreshed daily</li>
+              <li>Interactive force directed graph of the connections</li>
+              <li>Live feed grouped by day, with a slide in detail view</li>
+              <li>Free to explore without signing in</li>
             </ul>
             <Link href="/signals" className="home-spotlight-link">
               Open Live Signals →
@@ -203,6 +204,55 @@ export default function HomePage() {
           </div>
         </article>
 
+        {/* Pattern Engine — focused look at the galaxy graph.
+            Intentionally not reversed so the row direction zig-zags between
+            the Live Signals + Transparency Hub spotlights for visual rhythm. */}
+        <article className="home-spotlight home-inner">
+          <div className="home-spotlight-text">
+            <span className="home-eyebrow">Pattern Engine</span>
+            <h3 className="home-spotlight-title">
+              The connections between records, made visible.
+            </h3>
+            <p className="home-spotlight-body">
+              Every day, an AI analyst reads the last 60 days of signals
+              across court opinions, agency enforcement, recalls, IG reports,
+              regulatory dockets, and more, then surfaces the connections
+              between them. Each cluster is a story you would miss reading
+              the feed one item at a time.
+            </p>
+            <ul className="home-spotlight-list">
+              <li>
+                <strong>Regulatory cascades.</strong> One agency&rsquo;s
+                action triggers another&rsquo;s follow on.
+              </li>
+              <li>
+                <strong>Compounding exposure.</strong> Multi agency action
+                converging on a single company.
+              </li>
+              <li>
+                <strong>Recall to litigation.</strong> Product recalls
+                appearing alongside court filings on the same firm.
+              </li>
+              <li>
+                <strong>Oversight to action.</strong> IG findings followed
+                by real enforcement within a clear window.
+              </li>
+            </ul>
+            <Link href="/signals" className="home-spotlight-link">
+              Explore the galaxy →
+            </Link>
+          </div>
+          <div className="home-spotlight-shot">
+            <Image
+              src="/landing/pattern_graph.png"
+              alt="AI-detected patterns visualized as a force-directed graph"
+              width={2400}
+              height={1500}
+              className="home-spotlight-img"
+            />
+          </div>
+        </article>
+
         {/* Transparency Hub */}
         <article className="home-spotlight home-inner">
           <div className="home-spotlight-text">
@@ -211,16 +261,16 @@ export default function HomePage() {
               See how every agency actually responds.
             </h3>
             <p className="home-spotlight-body">
-              1,600 plus federal agencies and 54 state jurisdictions ranked by a
-              composite Transparency Score, composed of success rate, response
-              speed, fee rate, and portal availability. 17 years of FOIA.gov
+              Over 1,600 federal agencies and 54 state jurisdictions ranked by
+              a composite Transparency Score: success rate, response speed,
+              fee rate, and portal availability. Backed by 17 years of FOIA.gov
               analytics. Know what to expect before you file.
             </p>
             <ul className="home-spotlight-list">
-              <li>Per agency deep dives with exemption patterns</li>
-              <li>Interactive state level choropleth map</li>
-              <li>FOIA at a Glance, Volume Trends, Appeals + Litigation</li>
-              <li>AI curated FOIA news digest</li>
+              <li>Agency by agency deep dives, with exemption patterns</li>
+              <li>Interactive state level map</li>
+              <li>FOIA at a Glance, Volume Trends, Appeals and Litigation</li>
+              <li>Daily news digest of FOIA in the press</li>
             </ul>
             <Link href="/hub" className="home-spotlight-link">
               Open Transparency Hub →
@@ -244,9 +294,9 @@ export default function HomePage() {
               <span className="home-eyebrow">My Requests</span>
               <h4 className="home-small-title">Track filings to resolution.</h4>
               <p className="home-small-body">
-                Deadline monitoring, Claude powered response analysis, and
-                appeal letter generation. Per user private storage with Row
-                Level Security.
+                Statutory deadline monitoring, response analysis when the
+                agency replies, and one click appeal letters. Your filings
+                stay private to your account.
               </p>
               <span className="home-small-note">Sign in to use</span>
             </div>
@@ -263,9 +313,9 @@ export default function HomePage() {
               <span className="home-eyebrow">AI Chat Assistant</span>
               <h4 className="home-small-title">An expert on every page.</h4>
               <p className="home-small-body">
-                Persistent chat with 11 tools, a four tier accuracy system, and
-                anti hallucination safeguards. Every fact comes from a tool
-                result or verified reference data, with sources cited.
+                A chat assistant available throughout the app, with sources
+                cited for every claim. Answers come from tool results and
+                verified reference data, never from the model alone.
               </p>
               <span className="home-small-note">Available everywhere</span>
             </div>
@@ -287,27 +337,28 @@ export default function HomePage() {
               <div className="home-how-step-n">1</div>
               <h4 className="home-how-step-title">Search</h4>
               <p className="home-how-step-body">
-                Describe what you need in plain language. Claude interprets the
-                query, identifies the right agency, and unifies results from
-                MuckRock, DocumentCloud, and the open web.
+                Describe what you need in plain language. The AI figures out
+                the right agency and pulls results from MuckRock,
+                DocumentCloud, and the open web.
               </p>
             </div>
             <div className="home-how-step">
               <div className="home-how-step-n">2</div>
               <h4 className="home-how-step-title">Draft</h4>
               <p className="home-how-step-body">
-                If the records do not exist yet, Claude drafts the FOIA request
-                from three layers of verified context: statute text, agency CFR
-                regulations, and MuckRock outcomes.
+                If the records do not exist yet, the AI drafts the request
+                using verified statute text, the agency&rsquo;s CFR rules,
+                and outcomes from similar past requests.
               </p>
             </div>
             <div className="home-how-step">
               <div className="home-how-step-n">3</div>
               <h4 className="home-how-step-title">Track</h4>
               <p className="home-how-step-body">
-                Monitor the statutory deadline. Receive Claude response
-                analysis when the agency replies. Generate appeal or follow up
-                letters directly from the communication timeline.
+                Track the statutory deadline. When the agency replies, get an
+                analysis of what they did and did not release. Generate
+                appeal or follow up letters straight from the request
+                timeline.
               </p>
             </div>
           </div>
@@ -326,7 +377,7 @@ export default function HomePage() {
           <div className="home-audience-grid">
             <div className="home-audience-card">
               <strong>Journalists</strong>
-              <p>Investigate government activity and ship accountability reporting.</p>
+              <p>Investigate government activity and publish accountability reporting.</p>
             </div>
             <div className="home-audience-card">
               <strong>Lawyers</strong>
@@ -338,7 +389,7 @@ export default function HomePage() {
             </div>
             <div className="home-audience-card">
               <strong>Civic organizations</strong>
-              <p>Hold agencies accountable with persistent, documented pressure.</p>
+              <p>Hold agencies accountable with documented, persistent pressure.</p>
             </div>
           </div>
         </div>
@@ -349,7 +400,7 @@ export default function HomePage() {
         <div className="home-inner home-final-inner">
           <h2 className="home-final-title">Start investigating.</h2>
           <p className="home-final-sub">
-            Free. Open source. Sign in with your email.
+            Free to use. Sign in with your email.
           </p>
           <div className="home-cta-row">
             <Link href={primaryHref} className="home-cta-primary">

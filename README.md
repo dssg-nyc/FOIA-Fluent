@@ -1,6 +1,6 @@
 # FOIA Fluent
 
-FOIA Fluent is an open source civic AI platform that helps journalists, lawyers, researchers, and concerned citizens find public records, file optimized Freedom of Information Act requests, track agency responses, and surface real time government activity. This repository contains the full FastAPI backend, Next.js frontend, Supabase schema, data ingestion scripts for four federal sources, and the code powering the [live site](https://www.foiafluent.com).
+FOIA Fluent is an open source civic AI platform that helps journalists, lawyers, researchers, and concerned citizens find public records, file optimized Freedom of Information Act requests, track agency responses, and surface real time government activity. This repository contains the full FastAPI backend, Next.js frontend, Supabase schema, a registry driven ingest pipeline that pulls from 19 federal sources daily, and the code powering the [live site](https://www.foiafluent.com).
 
 <p align="center">
   <img src="docs/images/homepage.png" width="90%" alt="FOIA Fluent homepage with left sidebar navigation and feature tiles">
@@ -15,7 +15,12 @@ FOIA Fluent is an open source civic AI platform that helps journalists, lawyers,
 <p align="center">
   <img src="docs/images/intelligence_page.png" width="90%" alt="Live FOIA Signals feed with entity tags and source attribution">
 </p>
-<p align="center"><sub><b>Live FOIA Signals</b>: real time feed aggregating four federal sources with AI detected cross source patterns.</sub></p>
+<p align="center"><sub><b>Live FOIA Signals</b>: real time feed aggregating 19 federal sources with AI detected cross source patterns.</sub></p>
+
+<p align="center">
+  <img src="docs/images/pattern_graph.png" width="90%" alt="Pattern galaxy showing AI detected cross source clusters with entity nodes and connecting edges">
+</p>
+<p align="center"><sub><b>Pattern galaxy</b>: each cluster is one Claude detected cross source pattern. Nodes are signals (colored by cluster) and shared entities (companies, agencies, people, locations). Click a cluster to open an in page drawer with the narrative and full evidence timeline.</sub></p>
 
 ---
 
@@ -121,15 +126,38 @@ Entry points: [frontend/src/app/dashboard/page.tsx](frontend/src/app/dashboard/p
 
 ## Live FOIA Signals
 
-Real time intelligence feed aggregating government activity across four federal sources.
+Real time intelligence feed aggregating government activity across 19 federal sources, with a Claude detected pattern engine that surfaces cross source narratives.
 
-- **Four ingestion sources.** GAO bid protests via law firm RSS, EPA enforcement via the ECHO bulk ZIP, FDA warning letters, and DHS FOIA logs extracted from PDFs by Claude multimodal.
-- **Entity resolution.** Entity extraction and cross source linking for companies, agencies, people, and regulations.
-- **AI Patterns feed.** Claude Sonnet detects non obvious cross source patterns such as compounding risk, coordinated activity, and convergences.
-- **Persona based filtering.** Subscribe to industry personas to narrow the feed.
-- **Three pane layout.** Filter rail, compact signal rows, persistent detail pane with entity tags and source links.
+### Ingest
 
-Entry points: [frontend/src/app/signals](frontend/src/app/signals), [backend/app/routes/signals.py](backend/app/routes/signals.py), [backend/app/scripts](backend/app/scripts).
+- **19 federal sources** spanning enforcement, recalls, courts, contracts, ethics, and policy. Coverage includes GAO bid protests and reports, EPA ECHO, FDA warning letters and recalls, USDA FSIS recalls, NHTSA recalls, CPSC recalls, IRS news, IG reports, CIGIE aggregator, SEC EDGAR litigation, FEC enforcement, DOJ press, White House actions, Congress.gov bills, CourtListener federal opinions, regulations.gov dockets, SAM.gov contracts, Senate LDA lobbying, and DHS FOIA logs extracted from PDFs by Claude multimodal.
+- **Single source registry.** Adding a source is one entry in [backend/app/data/signals_sources.py](backend/app/data/signals_sources.py). No new cron jobs and no new scripts.
+- **Six fetch strategies.** RSS, HTML scrape, JSON API, CSV bulk download, sitemap crawl, and PDF vision. Each strategy lives in [backend/app/services/ingest](backend/app/services/ingest) and is selected by the `fetch_strategy` field on each `SourceConfig`.
+- **Auto scheduling.** A 60 minute asyncio loop in [backend/app/main.py](backend/app/main.py) ticks the dispatcher in [backend/app/services/ingest/runner.py](backend/app/services/ingest/runner.py). Sources self gate by their per source `cadence_minutes`. No external cron service.
+- **Pattern detection runs inline after ingest.** When a tick ingests new signals, pattern detection fires automatically with a 12 hour debounce. No polling loop and no threshold guesswork.
+
+### Categorization
+
+- **20 category taxonomy.** Categories are the data primitive on each signal (`agency_enforcement`, `drug_recalls`, `court_opinions`, `legislation`, ...). Defined in [backend/app/data/signal_categories.py](backend/app/data/signal_categories.py).
+- **Personas as bundles.** Seven personas (journalist, pharma analyst, hedge fund, environmental, policy researcher, legal analyst, consumer safety) are named bundles of categories. Selecting a persona expands to its underlying categories in the feed and pattern engine.
+- **Entity resolution.** Per signal extraction of companies, agencies, people, locations, and regulations. Slugified entities link cross source so a company's full activity is one click away.
+
+### Pattern engine
+
+- **Seven pattern types.** Compounding risk, coordinated activity, trend shift, convergence, regulatory cascade, recall to litigation, oversight to action. Each type encodes a different cross source narrative shape (temporal ordering, agency handoff, post recall litigation, IG to enforcement chain).
+- **60 day lookback, 400 signal corpus.** Wide enough to catch slow burning narratives, capped to keep cost predictable.
+- **Per run dedup context.** The last seven days of pattern titles are passed to Claude as already seen so the dashboard does not fill with duplicates.
+- **Cost ceiling.** One run costs roughly $0.50 on Sonnet 4.6, capped to one run per ingest cycle. Roughly $15 per month at daily cadence.
+
+### Dashboard
+
+- **Three tier number hierarchy.** Global counts (all time signals, visible patterns, sources enabled) at the top; current view counts (patterns connecting N signals over the last 60 days) above the galaxy; loaded view counts (filtered signal count, time window, ingested today) above the feed.
+- **Pattern galaxy.** Force directed graph rendered with d3 force. Each pattern is a colored cluster, with shared entity nodes that bridge clusters when the same company or agency appears in multiple patterns. Pan, scroll zoom, and pinch zoom on touch.
+- **In page pattern drawer.** Clicking a cluster opens a right side drawer with the narrative and full evidence timeline. The galaxy isolates to the selected cluster while the drawer is open. ESC, click outside, or click the X closes.
+- **Lead and grid feed.** The highest priority signal per day renders as a lead card with full summary; the rest of that day renders as a two column compact grid. Day labels are absolute dates (`Today · Apr 25`, `Yesterday · Apr 24`, weekday for the last week, then date for older).
+- **Source filter pills.** Multi select chips with category tinting, synced between the galaxy and the feed.
+
+Entry points: [frontend/src/app/signals](frontend/src/app/signals), [frontend/src/components/SignalsDashboard.tsx](frontend/src/components/SignalsDashboard.tsx), [frontend/src/components/PatternGraph.tsx](frontend/src/components/PatternGraph.tsx), [frontend/src/components/PatternDetailDrawer.tsx](frontend/src/components/PatternDetailDrawer.tsx), [backend/app/routes/signals.py](backend/app/routes/signals.py), [backend/app/services/signals.py](backend/app/services/signals.py), [backend/app/scripts/refresh_signal_patterns.py](backend/app/scripts/refresh_signal_patterns.py).
 
 ---
 
@@ -238,14 +266,18 @@ Frontend (Next.js 14)          Backend (FastAPI)              External Services
 FOIA-Fluent/
 ├── backend/                             FastAPI server
 │   ├── app/
-│   │   ├── main.py                      ASGI entrypoint and router registration
+│   │   ├── main.py                      ASGI entrypoint, router registration, signals dispatcher loop
 │   │   ├── config.py                    Settings from environment variables
 │   │   ├── middleware/                  Supabase JWT auth extraction
 │   │   ├── models/                      Pydantic request and response schemas
-│   │   ├── routes/                      HTTP routes (draft, tracking, hub, signals, chat, ...)
-│   │   ├── services/                    Business logic (drafter, search, chat, ...)
-│   │   ├── scripts/                     Data refresh and signals ingestion
-│   │   └── data/                        Reference data files
+│   │   ├── routes/                      HTTP routes (draft, tracking, hub, signals, chat, admin, ...)
+│   │   ├── services/                    Business logic (drafter, search, chat, signals, ...)
+│   │   │   └── ingest/                  Per strategy fetchers (rss, html, json_api, csv_bulk, pdf_vision) and the runner
+│   │   ├── scripts/                     Data refresh, signals backfill, persona seed, pattern engine
+│   │   └── data/                        Reference data and registries
+│   │       ├── signals_sources.py       Source registry: 19 SourceConfig entries
+│   │       ├── signal_categories.py     20 category taxonomy and 7 persona bundles
+│   │       └── federal_agencies.py      Federal agency reference data
 │   ├── supabase_schema.sql              Database schema and RLS policies
 │   └── requirements.txt                 Python dependencies
 ├── frontend/                            Next.js 14 app
@@ -256,9 +288,10 @@ FOIA-Fluent/
 │   │   │   ├── dashboard/               My Requests
 │   │   │   ├── requests/[id]/           Request detail
 │   │   │   ├── hub/                     Transparency Hub (federal, states, insights)
-│   │   │   ├── signals/                 Live FOIA Signals feed and patterns
+│   │   │   ├── signals/                 Live FOIA Signals dashboard, patterns, entity pages
+│   │   │   ├── admin/                   Admin signals health dashboard
 │   │   │   └── layout.tsx               Root layout with sidebar and chat
-│   │   ├── components/                  Sidebar, ChatPanel, Footer, shared UI
+│   │   ├── components/                  Sidebar, ChatPanel, SignalsDashboard, PatternGraph, drawers
 │   │   └── lib/                         API clients and Supabase auth
 │   ├── package.json
 │   └── next.config.js
@@ -341,7 +374,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 - Recharts and react simple maps for charts and the state map
 
 **AI and search**
-- Claude API (Haiku 4.5 default, Sonnet 4 escalation), tool use, large context
+- Claude API (Haiku 4.5 default, Sonnet 4.6 escalation, Sonnet 4.6 for pattern detection and PDF vision), tool use, 200K context
 - Tavily API for domain scoped web search
 
 **Infrastructure**
@@ -366,13 +399,25 @@ python -m app.scripts.refresh_insights_data
 
 # AI news digest (weekly)
 python -m app.scripts.refresh_news_digest
+```
 
-# Live FOIA Signals ingestion (daily or on demand)
-python -m app.scripts.refresh_signals_gao
-python -m app.scripts.refresh_signals_epa
-python -m app.scripts.refresh_signals_fda
-python -m app.scripts.refresh_signals_dhs
-python -m app.scripts.generate_patterns
+For Live FOIA Signals, the in process dispatcher in [backend/app/main.py](backend/app/main.py) ticks every 60 minutes in production and runs every source whose `cadence_minutes` has elapsed. Manual triggers are still available for development and one off backfills.
+
+```bash
+# Run every source whose cadence is due (same code path the dispatcher uses)
+python -m app.scripts.run_due_sources
+
+# Run a single source by source_id from the registry, ignoring cadence
+python -m app.scripts.run_source fda_warning_letters
+
+# Pattern engine: regenerate cross source patterns over the recent corpus
+python -m app.scripts.refresh_signal_patterns
+
+# Seed the personas table from PERSONA_BUNDLES (idempotent, safe to re run)
+python -m app.scripts.seed_personas
+
+# One off: tag every existing signal with category_tags using Haiku
+python -m app.scripts.backfill_category_tags
 ```
 
 ---

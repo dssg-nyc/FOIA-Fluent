@@ -42,8 +42,10 @@ class QueryInterpreter:
 
     async def interpret(self, user_query: str) -> dict:
         """Take a natural language query and return structured search queries."""
+        # Haiku — pure intent classification / query rewriting. No reasoning
+        # depth required; Sonnet is overkill here.
         message = await self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1000,
             system=SYSTEM_PROMPT,
             messages=[

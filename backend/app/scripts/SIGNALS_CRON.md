@@ -1,77 +1,77 @@
 # Live FOIA Signals — Cron Schedule
 
-The Live FOIA Signals ingestion scripts run as Railway scheduled jobs. Each
-script is idempotent (deduped on `(source, source_id)`) so retries and overlapping
-manual runs are safe.
+Signals runs on a **registry-driven** pipeline. The source list lives in
+[`backend/app/data/signals_sources.py`](../data/signals_sources.py); each entry
+carries its own `cadence_minutes`. A single hourly Railway cron dispatches
+any source whose cadence has elapsed.
 
-## Schedule
+## One cron entry covers every source
 
-| Source | Script | Cadence | Cron | Notes |
-|---|---|---|---|---|
-| GAO bid protests | `refresh_signals_gao` | hourly | `0 * * * *` | RSS feed updates within ~1 hour of GAO publication |
-| EPA ECHO enforcement | `refresh_signals_epa_echo` | daily 06:00 ET | `0 10 * * *` | ECHO backfills weekly; daily polling catches within 24h |
-| FDA Warning Letters | `refresh_signals_fda_warning_letters` | daily 07:00 ET | `0 11 * * *` | FDA posts in weekly batches, typically Tuesdays |
-| DHS FOIA log (pilot) | `refresh_signals_dhs_foia_log` | weekly Mon 08:00 ET | `0 12 * * 1` | DHS publishes quarterly; weekly polling catches new files within ~7 days |
+| Schedule | Cron expression | Command |
+|---|---|---|
+| hourly (top of hour) | `0 * * * *` | `python -m app.scripts.run_due_sources` |
 
-(Times in UTC are 4 hours ahead of US Eastern in winter, 5 in summer. Adjust if your Railway environment is set to a different timezone.)
+That's it. To add a source: add a `SourceConfig` entry to the registry. No
+new cron job needed; the dispatcher picks it up automatically.
 
-## How to configure on Railway
+### How to configure on Railway
 
-Each script is its own Railway service (or scheduled trigger on the existing backend service, depending on your Railway plan tier).
+1. Railway dashboard → backend service → Settings → Cron / Scheduled triggers.
+2. Add one entry with cron `0 * * * *` and command `python -m app.scripts.run_due_sources`.
+3. Required env vars: `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`.
 
-**Option A — Railway scheduled triggers (preferred):**
-1. In the Railway dashboard, open the FOIA Fluent backend service.
-2. Settings → "Cron" or "Scheduled triggers".
-3. Add four schedules with the cron expressions above and the corresponding `python -m app.scripts.refresh_signals_*` start command.
+If you already had the 4 per-source cron entries from Phase 1 (`refresh_signals_gao`,
+`refresh_signals_epa_echo`, `refresh_signals_fda_warning_letters`,
+`refresh_signals_dhs_foia_log`), **delete them** once the new dispatcher is live.
+They're redundant and double-writes are wasted Claude calls.
 
-**Option B — Separate Railway services:**
-If your plan tier doesn't support scheduled triggers on the main service, create a small companion service per script with its own start command:
+## Per-source cadence
 
-```
-python -m app.scripts.refresh_signals_gao
-```
+Cadence is set on each source's `SourceConfig.cadence_minutes`. Current defaults:
 
-Set the cron expression in the service's Deploy → Cron schedule field.
+| source_id | cadence | notes |
+|---|---|---|
+| `gao_protests` | 60 min (hourly) | RSS feeds refresh within ~1h |
+| `epa_echo` | 24 h | ECHO bulk ZIP refreshes weekly; daily polling is plenty |
+| `fda_warning_letters` | 24 h | FDA posts in weekly batches (Tuesdays) |
+| `dhs_foia_log` | 7 d | DHS publishes quarterly; weekly check catches within ~7d |
 
-## Required environment variables
-
-Each cron service needs the same env vars as the main backend:
-
-```
-ANTHROPIC_API_KEY=...
-SUPABASE_URL=...
-SUPABASE_SERVICE_KEY=...
-```
-
-## Running manually for verification
-
-After setting up the schema and seeding personas, run each script by hand to validate:
+## Running sources manually
 
 ```bash
-cd backend
-python -m app.scripts.seed_personas
-python -m app.scripts.refresh_signals_gao
-python -m app.scripts.refresh_signals_epa_echo
-python -m app.scripts.refresh_signals_fda_warning_letters
-python -m app.scripts.refresh_signals_dhs_foia_log
+# One specific source
+python -m app.scripts.run_source --source-id gao_protests
+
+# Ignore cadence, run now
+python -m app.scripts.run_source --source-id gao_protests --force
+
+# Fetch but don't write anything (no Claude calls, no Supabase)
+python -m app.scripts.run_source --source-id gao_protests --dry-run
+
+# Dispatch the whole registry (what the cron runs)
+python -m app.scripts.run_due_sources
+python -m app.scripts.run_due_sources --force   # ignore cadence
 ```
 
-Each script logs a one-line summary at the end:
-`[gao_protests] fetched=12 inserted=8 skipped=4 failed=0 runtime=18.3s`
+## Health + cost visibility
+
+Every run writes a row to `signals_source_runs` with item counts, Claude token
+usage, and status. The admin dashboard at `/admin/signals-health` (protected by
+`X-Admin-Secret`) surfaces last-run status, 7-day activity, and projected
+monthly cost per source.
 
 ## Defensive design
 
-- Every script catches per-item exceptions and continues to the next item.
-- The shared `_signals_common.process_item` function handles dedup, Claude
-  extraction, and upsert in one place.
-- Failures during a single run never poison the table — `(source, source_id)`
-  is a unique key, and unsuccessful Claude calls fall through gracefully.
-- The DHS script in particular is designed to exit cleanly when no new log
-  files are found upstream (which is most weeks, since DHS publishes quarterly).
+- Every source has an `enabled: bool` kill-switch. Setting `enabled=False` on a
+  broken source removes it from the dispatcher until the next deploy.
+- Every source has `max_items_per_run` and `max_claude_calls_per_day` caps.
+- `(source, source_id)` uniqueness on `foia_signals_feed` makes retries
+  idempotent — the cheap dedup check skips already-ingested items before any
+  Claude call.
+- Per-item failures are caught and counted but never poison the batch.
 
-## Cost ceiling (Phase 1)
+## Cost ceiling (Phase 2.1 — 4 sources)
 
-Estimated monthly Claude spend across all 4 sources combined: **~$2–$5/month**
-on Haiku 4.5 with the conservative tool-use prompt. Volume is small (~50–300
-new signals per week across all sources). Update the cost analysis at
-`docs/cost-analysis.md` once production traffic is observed.
+Estimated monthly Claude spend: **~$2–$5/month** on Haiku 4.5. Phase 2.3 adds
+more sources in waves toward the overall ~$75/month ceiling; the health
+dashboard tracks projected monthly cost so we catch regressions early.

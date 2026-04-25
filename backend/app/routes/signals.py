@@ -36,7 +36,7 @@ def get_persona_catalog():
 def get_signal_feed(
     personas: Optional[str] = Query(default=None, description="Comma-separated persona ids"),
     days: int = Query(default=30, ge=1, le=365),
-    limit: int = Query(default=100, ge=1, le=200),
+    limit: int = Query(default=200, ge=1, le=2000),
     user_id: Optional[str] = Depends(get_current_user_id_optional),
 ):
     """Feed of recent signals. Public — unauthenticated visitors get the
@@ -126,3 +126,12 @@ def get_public_sample():
     """PUBLIC (no auth). Returns a small curated sample for the marketing
     landing page: top signal per persona, top patterns, and source coverage."""
     return signals_service.get_public_sample(per_persona=1, max_patterns=3)
+
+
+@router.get("/stats")
+def get_global_stats():
+    """PUBLIC (no auth). Global stats for the /signals page header — all-time
+    signal count, visible-pattern count, enabled-source count, and the most
+    recent ingest timestamp. Doesn't depend on persona/filter state, so it
+    can be cached aggressively client-side."""
+    return signals_service.get_global_stats()

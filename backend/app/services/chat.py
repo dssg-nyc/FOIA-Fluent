@@ -429,7 +429,7 @@ async def stream_chat(
                 if tool_name == "search_web" and not result_data.get("results"):
                     # Auto-escalate to broad search
                     yield f'data: {json.dumps({"type": "tool_call", "name": "search_web_broad", "status": "researching deeper..."})}\n\n'
-                    model = "claude-sonnet-4-20250514"  # Upgrade model for Tier 3
+                    model = "claude-sonnet-4-6"  # Upgrade model for Tier 3
                     result_str = await execute_tool("search_web_broad", tool_input, user_id)
 
                 yield f'data: {json.dumps({"type": "tool_call", "name": tool_name, "status": "done"})}\n\n'

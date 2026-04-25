@@ -35,6 +35,7 @@ export interface Signal {
   entities: SignalEntities;
   entity_slugs?: string[];
   persona_tags: string[];
+  category_tags?: string[];
   priority: number;
   requester: string;
   metadata: Record<string, unknown>;
@@ -44,6 +45,13 @@ export interface SignalFeedResponse {
   signals: Signal[];
   count: number;
   personas_filter: string[];
+}
+
+export interface SignalsGlobalStats {
+  total_signals: number;
+  total_patterns_visible: number;
+  sources_enabled: number;
+  last_ingested_at: string | null;
 }
 
 export interface PersonaCatalogResponse {
@@ -217,5 +225,11 @@ export interface PublicSample {
 export async function fetchPublicSample(): Promise<PublicSample> {
   const res = await fetch(`${API_URL}/api/v1/signals/sample`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Sample error: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchSignalsGlobalStats(): Promise<SignalsGlobalStats> {
+  const res = await fetch(`${API_URL}/api/v1/signals/stats`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Stats error: ${res.status}`);
   return res.json();
 }

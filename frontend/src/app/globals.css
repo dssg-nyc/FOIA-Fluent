@@ -6953,6 +6953,41 @@ h3, h4, h5 {
   font-weight: 400;
 }
 
+/* Caption below each tier-1 stat number — clarifies what the number means
+   ("all time", "visible", "live", "last ingest") without bloating the
+   primary number's visual weight. */
+.signals-stat-foot {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #6b7280);
+}
+
+/* Tier 2 / Tier 3 meta lines — slim, gray, sit just above the galaxy and
+   feed sections. Use <strong> inside for emphasis on the actual numbers. */
+.signals-tier-meta {
+  display: block;
+  font-size: 0.92rem;
+  color: var(--foreground-soft, #4a5568);
+  font-variant-numeric: tabular-nums;
+}
+
+.signals-tier-meta strong {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.signals-tier-meta-soft {
+  color: var(--muted, #6b7280);
+  font-weight: 400;
+}
+
+.signals-tier-meta-feed {
+  margin-bottom: 0.6rem;
+}
+
 /* ── Section head (shared by galaxy + feed) ─────────────────── */
 .signals-dashboard-section {
   margin-bottom: 2.5rem;
@@ -7357,6 +7392,644 @@ h3, h4, h5 {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
+/* ──────────────────────────────────────────────────────────────
+   Phase 2.5 redesign — galaxy/feed filter separation + new filter bar
+   ────────────────────────────────────────────────────────────── */
+
+/* Galaxy filter row — explicitly labeled so users know it only affects
+   the graph above it, not the feed below. */
+.signals-galaxy-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0 0.85rem;
+  flex-wrap: wrap;
+}
+
+.signals-galaxy-filter-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--foreground-muted, #6b7280);
+  flex-shrink: 0;
+}
+
+/* Strong divider between galaxy and feed sections */
+.signals-section-divider {
+  position: relative;
+  margin: 2.5rem 0 1.25rem;
+  text-align: center;
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.signals-section-divider-label {
+  position: absolute;
+  top: -0.65rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--background, #fff);
+  padding: 0 1rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--foreground-muted, #6b7280);
+}
+
+.signals-feed-section {
+  scroll-margin-top: 1rem;
+}
+
+/* ── Feed filter bar (sticky as user scrolls) ─────────────── */
+.signals-feed-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--background, #fff);
+  padding: 0.75rem 0 0.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.signals-feed-filter-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.signals-feed-filter-row-primary {
+  margin-bottom: 0.5rem;
+}
+
+.signals-feed-filter-row-secondary {
+  font-size: 0.85rem;
+  color: var(--foreground-muted, #6b7280);
+}
+
+.signals-feed-filter-summary {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--foreground-muted, #6b7280);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Search input ─────────────────────────────────────────── */
+.signals-feed-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 320px;
+  min-width: 220px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 0 0.55rem;
+  background: var(--surface, #fff);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.signals-feed-search:focus-within {
+  border-color: var(--blue, #1863dc);
+  box-shadow: 0 0 0 3px rgba(24, 99, 220, 0.12);
+}
+
+.signals-feed-search svg {
+  flex-shrink: 0;
+  color: var(--foreground-muted, #6b7280);
+}
+
+.signals-feed-search input {
+  border: none;
+  outline: none;
+  background: none;
+  flex: 1;
+  padding: 0.55rem 0.5rem;
+  font: inherit;
+  font-size: 0.92rem;
+  color: var(--foreground);
+  min-width: 0;
+}
+
+.signals-feed-search-clear {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--foreground-muted, #6b7280);
+  padding: 0.25rem;
+}
+
+.signals-feed-search-clear:hover {
+  color: var(--foreground);
+}
+
+/* ── Multi-select dropdown ────────────────────────────────── */
+.signals-msdd {
+  position: relative;
+  display: inline-block;
+}
+
+.signals-msdd-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--foreground);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.signals-msdd-trigger:hover {
+  border-color: var(--border-strong, #cbd5e1);
+}
+
+.signals-msdd-trigger-active {
+  border-color: var(--blue, #1863dc);
+  background: rgba(24, 99, 220, 0.04);
+}
+
+.signals-msdd-label {
+  font-weight: 500;
+}
+
+.signals-msdd-counter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--blue, #1863dc);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.signals-msdd-caret {
+  color: var(--foreground-muted, #6b7280);
+  flex-shrink: 0;
+}
+
+.signals-msdd-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 240px;
+  max-width: 320px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  padding: 0.25rem 0;
+}
+
+.signals-msdd-menu-narrow {
+  min-width: 180px;
+}
+
+.signals-msdd-menu-head {
+  padding: 0.35rem 0.65rem 0.4rem;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  margin-bottom: 0.25rem;
+}
+
+.signals-msdd-clear {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--blue, #1863dc);
+  padding: 0;
+}
+
+.signals-msdd-clear:hover {
+  text-decoration: underline;
+}
+
+.signals-msdd-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.signals-msdd-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--foreground);
+  text-align: left;
+  width: 100%;
+}
+
+.signals-msdd-option:hover {
+  background: var(--surface-hover, #f3f4f6);
+}
+
+.signals-msdd-option-active {
+  font-weight: 500;
+}
+
+.signals-msdd-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 3px;
+  font-size: 0.7rem;
+  color: white;
+  background: var(--surface, #fff);
+  flex-shrink: 0;
+}
+
+.signals-msdd-option-active .signals-msdd-checkbox {
+  background: var(--blue, #1863dc);
+  border-color: var(--blue, #1863dc);
+}
+
+.signals-msdd-option-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.signals-msdd-option-count {
+  font-size: 0.74rem;
+  color: var(--foreground-muted, #6b7280);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+/* ── Active filter chips ──────────────────────────────────── */
+.signals-feed-active-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0 0.25rem;
+  border-top: 1px dashed var(--border, #e5e7eb);
+  margin-top: 0.5rem;
+}
+
+.signals-feed-active-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--foreground-muted, #6b7280);
+}
+
+.signals-feed-active-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.45rem 0.2rem 0.6rem;
+  background: rgba(24, 99, 220, 0.08);
+  border: 1px solid rgba(24, 99, 220, 0.2);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--blue-strong, #1351b8);
+}
+
+.signals-feed-active-chip button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.65;
+  font-size: 0.7rem;
+  padding: 0 0.15rem;
+  line-height: 1;
+}
+
+.signals-feed-active-chip button:hover {
+  opacity: 1;
+}
+
+.signals-feed-active-clear {
+  margin-left: auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--foreground-muted, #6b7280);
+  padding: 0.2rem 0.4rem;
+}
+
+.signals-feed-active-clear:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+/* Mobile — stack filter rows */
+@media (max-width: 720px) {
+  .signals-feed-filter-row-primary {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .signals-feed-filter-row-primary .signals-feed-search {
+    width: 100%;
+  }
+  .signals-feed-filter-row-secondary {
+    flex-wrap: wrap;
+  }
+  .signals-feed-filter-summary {
+    margin-left: 0;
+    width: 100%;
+    text-align: right;
+    margin-top: 0.25rem;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Phase 2.5+ feed — lead card + 2-col compact grid
+   ────────────────────────────────────────────────────────────── */
+
+/* Two-column compact grid, collapses to single column on narrow viewports */
+.signals-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 720px) {
+  .signals-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Lead card (full-width, generous padding, summary + chips) ── */
+.signals-card-lead {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem 1rem;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 150ms ease, transform 150ms ease;
+  font: inherit;
+  color: inherit;
+}
+
+.signals-card-lead::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--source-color);
+  opacity: 0.85;
+  transition: opacity 120ms ease;
+}
+
+.signals-card-lead:hover {
+  border-color: var(--border-strong, #cbd5e1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.signals-card-lead:hover::before {
+  opacity: 1;
+}
+
+.signals-card-lead-active,
+.signals-card-lead-active:hover {
+  border-color: var(--source-color);
+  box-shadow: 0 0 0 2px var(--source-color);
+}
+
+.signals-card-lead-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.signals-card-lead-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  font-size: 0.72rem;
+}
+
+.signals-card-lead-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--source-color);
+}
+
+.signals-card-lead-time {
+  color: var(--muted, #6b7280);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.signals-card-lead-title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  margin: 0 0 0.5rem;
+}
+
+.signals-card-lead-summary {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--foreground-soft, #4a5568);
+  margin: 0 0 0.75rem;
+}
+
+/* ── Compact card (grid cell) ── */
+.signals-card-compact {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  padding: 0.85rem 0.95rem 0.85rem;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 120ms ease, box-shadow 150ms ease, transform 150ms ease;
+  font: inherit;
+  color: inherit;
+  min-height: 130px;
+}
+
+.signals-card-compact::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--source-color);
+  opacity: 0.7;
+  transition: opacity 120ms ease;
+}
+
+.signals-card-compact:hover {
+  border-color: var(--border-strong, #cbd5e1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.signals-card-compact:hover::before {
+  opacity: 1;
+}
+
+.signals-card-compact-active,
+.signals-card-compact-active:hover {
+  border-color: var(--source-color);
+  box-shadow: 0 0 0 2px var(--source-color);
+}
+
+.signals-card-compact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.72rem;
+}
+
+.signals-card-compact-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--foreground);
+  font-size: 0.66rem;
+}
+
+.signals-card-compact-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--source-color);
+}
+
+.signals-card-compact-time {
+  color: var(--muted, #6b7280);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.signals-card-compact-title {
+  font-size: 0.96rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--foreground);
+  margin: 0 0 0.4rem;
+  /* clamp to 2 lines so cards in a row stay roughly aligned */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.signals-card-compact-summary {
+  font-size: 0.83rem;
+  line-height: 1.45;
+  color: var(--foreground-soft, #4a5568);
+  margin: 0 0 0.6rem;
+  /* 2-line clamp keeps card heights consistent */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Entity chips (shared) ── */
+.signals-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: auto;
+}
+
+.signals-card-chips-compact .signals-card-chip {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+}
+
+.signals-card-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-alt, #f3f4f6);
+  font-size: 0.77rem;
+  font-weight: 500;
+  color: var(--foreground-soft, #4a5568);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Chip-color variants by entity type — subtle tint matching the family */
+.signals-card-chip-company {
+  background: rgba(24, 99, 220, 0.06);
+  color: #1351b8;
+}
+
+.signals-card-chip-agency {
+  background: rgba(168, 85, 247, 0.06);
+  color: #7c3aed;
+}
+
+.signals-card-chip-person {
+  background: rgba(192, 57, 43, 0.06);
+  color: #c0392b;
+}
+
+.signals-card-chip-location {
+  background: rgba(31, 133, 98, 0.06);
+  color: #1f8562;
+}
+
 /* ── Drawer ─────────────────────────────────────────────────── */
 .signals-drawer-overlay {
   position: fixed;
@@ -7491,6 +8164,70 @@ h3, h4, h5 {
 
 .signals-drawer-link:hover {
   background: var(--primary);
+}
+
+/* ── Pattern detail drawer (wider variant) ─────────────────── */
+.signals-pattern-drawer {
+  /* Patterns include the graph + narrative + timeline, so they need
+     significantly more horizontal room than the signal drawer (440px). */
+  width: min(720px, 92vw);
+}
+
+.signals-pattern-drawer-inner {
+  padding: 2rem 1.75rem 2.5rem 1.75rem;
+}
+
+.signals-pattern-drawer-fullpage-link {
+  display: inline-block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-decoration: none;
+  margin-bottom: 0.75rem;
+  transition: color 0.15s;
+}
+
+.signals-pattern-drawer-fullpage-link:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+/* Drawer-variant tweaks for the shared pattern-detail content. The page
+   variant uses signals-container which gives generous outer padding +
+   max-width; in the drawer we want flush edges and tighter rhythm. */
+.signals-pattern-detail-content-drawer .signals-entity-header {
+  padding: 0;
+  margin-bottom: 1rem;
+}
+
+.signals-pattern-detail-content-drawer .signals-entity-title {
+  font-size: 1.4rem;
+  line-height: 1.25;
+  margin-bottom: 0.5rem;
+}
+
+.signals-pattern-detail-content-drawer .signals-pattern-narrative {
+  margin: 1rem 0;
+}
+
+.signals-pattern-detail-content-drawer .signals-pattern-section-body {
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.signals-pattern-detail-content-drawer .signals-diagram-timeline {
+  margin: 1rem 0 0 0;
+}
+
+/* Selected cluster card in galaxy reads as locked-on. */
+.pattern-graph-cluster-card-selected {
+  box-shadow: 0 0 0 2px var(--primary), 0 4px 16px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+}
+
+/* Selected pattern card in the strip below the galaxy. */
+.signals-pattern-compact-active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
 }
 
 /* ── Skeleton + empty states ────────────────────────────────── */
