@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from app.config import settings
+from app.data.signal_categories import categories_for_signal, derive_persona_tags
 from app.data.signals_sources import SOURCES, SourceConfig, enabled_sources
 from app.scripts._signals_common import (
     PILOT_PERSONAS,
@@ -122,6 +123,12 @@ async def _process_one(supabase, cfg: SourceConfig, item: RawItem, result: RunRe
         result.claude_input_tokens += in_toks
         result.claude_output_tokens += out_toks
 
+        # pre_extracted strategies (e.g. pdf_vision) still use the legacy
+        # persona_tags-only schema. Fall back to source-default categories so
+        # the row still gets bucketed correctly under the Phase 2.5 model.
+        category_tags = categories_for_signal(cfg.source_id, [])
+        persona_tags = derive_persona_tags(category_tags)
+
         ok = upsert_signal(
             supabase,
             source=cfg.source_id,
@@ -133,7 +140,8 @@ async def _process_one(supabase, cfg: SourceConfig, item: RawItem, result: RunRe
             signal_date=item.signal_date,
             agency_codes=item.default_agency_codes,
             entities=ex.entities,
-            persona_tags=[p for p in ex.persona_tags if p in PILOT_PERSONAS],
+            persona_tags=persona_tags,
+            category_tags=category_tags,
             priority=ex.priority,
             metadata=item.extra_metadata,
             requester=item.requester,
@@ -154,9 +162,13 @@ async def _process_one(supabase, cfg: SourceConfig, item: RawItem, result: RunRe
     extract = extract or {}
     summary = extract.get("summary", "") or ""
     entities = extract.get("entities", {}) or {}
-    persona_tags = [
-        p for p in (extract.get("persona_tags") or []) if p in PILOT_PERSONAS
-    ]
+    # Phase 2.5: Claude extracts category_tags; persona_tags is derived
+    # downstream via PERSONA_BUNDLES. Source defaults are unioned in so
+    # every signal is at least bucketed by its source's family.
+    category_tags = categories_for_signal(
+        cfg.source_id, extract.get("category_tags", []) or []
+    )
+    persona_tags = derive_persona_tags(category_tags)
     priority = extract.get("priority", 0) or 0
     claude_requester = (extract.get("requester") or "").strip()
 
@@ -174,6 +186,7 @@ async def _process_one(supabase, cfg: SourceConfig, item: RawItem, result: RunRe
         agency_codes=item.default_agency_codes,
         entities=entities,
         persona_tags=persona_tags,
+        category_tags=category_tags,
         priority=priority,
         metadata=item.extra_metadata,
         requester=requester,
