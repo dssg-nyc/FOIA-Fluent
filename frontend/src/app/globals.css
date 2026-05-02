@@ -6878,10 +6878,26 @@ h3, h4, h5 {
   max-width: 680px;
 }
 
+/* Role picker — sits between the global stat strip and the galaxy so the
+   role of the chips is self-evident (stats → "pick a role" → galaxy). */
+.signals-persona-section {
+  margin: 1.5rem 0 1.75rem 0;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.signals-persona-section-hint {
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0 0 0.75rem 0;
+  max-width: 640px;
+}
+
 .signals-persona-control {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.4rem;
   align-items: center;
   flex: 0 1 auto;
 }
