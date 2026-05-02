@@ -385,10 +385,20 @@ class FOIADrafter:
 
         message = await self.client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=3000,
+            # Letter (~1k tokens) + 5-field drafting_strategy + key_elements +
+            # tips + submission_info routinely exceeds 3k. 8k gives comfortable
+            # headroom on Sonnet 4.6 without being wasteful.
+            max_tokens=8000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_msg}],
         )
+
+        if message.stop_reason == "max_tokens":
+            raise RuntimeError(
+                "Drafter response truncated at max_tokens. Output JSON is "
+                "incomplete and cannot be parsed. Consider raising max_tokens "
+                "or shortening the drafting_strategy sub-fields."
+            )
 
         parsed = _parse_json(message.content[0].text)
 

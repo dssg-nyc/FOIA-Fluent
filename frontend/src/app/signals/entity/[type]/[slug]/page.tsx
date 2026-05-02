@@ -1,23 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import {
   fetchEntity,
   fetchEntitySignals,
   type EntityBio,
   type Signal,
 } from "@/lib/signals-api";
-
-const SOURCE_LABELS: Record<string, string> = {
-  gao_protests: "GAO Bid Protest",
-  epa_echo: "EPA ECHO",
-  fda_warning_letters: "FDA Warning Letter",
-  dhs_foia_log: "DHS FOIA Log",
-};
-
-const FOIA_REQUEST_SOURCES = new Set(["dhs_foia_log"]);
+import {
+  FOIA_REQUEST_SOURCES,
+  SOURCE_LABELS,
+  SOURCE_LONG_LABELS,
+} from "@/lib/signal-sources";
 
 function fmtDate(iso: string): string {
   try {
@@ -33,6 +28,7 @@ function fmtDate(iso: string): string {
 
 function EntityPageInner() {
   const params = useParams();
+  const router = useRouter();
   const entityType = (params.type as string) || "";
   const entitySlug = (params.slug as string) || "";
 
@@ -40,6 +36,27 @@ function EntityPageInner() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Track whether the user navigated here from somewhere on this site (in
+  // which case browser-back is the right "back" target — typically returns
+  // them to the pattern drawer they were inside) or arrived directly via
+  // URL (in which case we fall back to /signals).
+  const arrivedFromInternal = useRef(false);
+  useEffect(() => {
+    arrivedFromInternal.current =
+      typeof window !== "undefined" &&
+      window.history.length > 1 &&
+      !!document.referrer &&
+      document.referrer.includes(window.location.host);
+  }, []);
+
+  function handleBack() {
+    if (arrivedFromInternal.current) {
+      router.back();
+    } else {
+      router.push("/signals");
+    }
+  }
 
   useEffect(() => {
     if (!entityType || !entitySlug) return;
@@ -64,9 +81,13 @@ function EntityPageInner() {
 
   return (
     <main className="signals-container">
-      <Link href="/signals/feed" className="signals-back-link">
-        ← Back to feed
-      </Link>
+      <button
+        type="button"
+        onClick={handleBack}
+        className="signals-back-link"
+      >
+        ← Back
+      </button>
 
       {loading && <p className="signals-empty">Loading entity…</p>}
       {error && <p className="signals-empty">Error: {error}</p>}
@@ -92,7 +113,7 @@ function EntityPageInner() {
               <div className="signals-entity-source-row">
                 {sourceList.map(([source, count]) => (
                   <span key={source} className="signals-source-badge">
-                    {SOURCE_LABELS[source] || source} · {count}
+                    {SOURCE_LONG_LABELS[source] || SOURCE_LABELS[source] || source} · {count}
                   </span>
                 ))}
               </div>
@@ -106,7 +127,8 @@ function EntityPageInner() {
               <h2 className="signals-day-heading">Timeline</h2>
               <div className="signals-day-cards">
                 {signals.map((s) => {
-                  const sourceLabel = SOURCE_LABELS[s.source] || s.source;
+                  const sourceLabel =
+                    SOURCE_LONG_LABELS[s.source] || SOURCE_LABELS[s.source] || s.source;
                   const kind = FOIA_REQUEST_SOURCES.has(s.source) ? "request" : "action";
                   const kindLabel =
                     kind === "request" ? "FOIA request filed" : "Agency action";

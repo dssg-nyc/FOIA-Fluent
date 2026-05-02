@@ -55,12 +55,11 @@ const CLUSTER_PALETTE = [
   "#a03737", // brick
 ];
 
-const SOURCE_COLORS: Record<string, string> = {
-  gao_protests: "#2b66c9",
-  epa_echo: "#1f8562",
-  fda_warning_letters: "#6d4fc0",
-  dhs_foia_log: "#c17a2a",
-};
+// Full 19-source catalog (colors + friendly labels) lives in lib/ so we
+// avoid a circular import with SignalsDashboard. Detail-mode signal dots
+// pick their color from SOURCE_COLORS; the dynamic source legend reads
+// SOURCE_LABELS for friendly names.
+import { SOURCE_COLORS, SOURCE_LABELS } from "@/lib/signal-sources";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -318,6 +317,12 @@ type GraphProps =
       // the galaxy isolated to the selected pattern even when the mouse
       // leaves the canvas.
       selectedPatternId?: string | null;
+      // External hover-sync: when the user hovers a card in the
+      // PatternCardGrid, the dashboard pushes that pattern id in here so
+      // the galaxy isolates the matching cluster. Live in-galaxy hover
+      // still wins (hovering inside the canvas takes priority).
+      externalHoveredPatternId?: string | null;
+      onHoverPattern?: (patternId: string | null) => void;
     }
   | {
       mode: "detail";
@@ -325,6 +330,11 @@ type GraphProps =
       signals: Signal[];
       height?: number;
       onSignalClick?: (signalId: string) => void;
+      /** When provided, clicking an entity node calls this instead of
+       * routing to the standalone /signals/entity/... page. The dashboard
+       * uses this to layer the entity view on top of the pattern in the
+       * same drawer (URL becomes `?pattern=X&entity=type:slug`). */
+      onEntitySelect?: (entityType: string, entitySlug: string) => void;
     };
 
 function PatternGraphImpl(props: GraphProps) {
@@ -356,6 +366,7 @@ function PatternGraphImpl(props: GraphProps) {
       : props.mode === "galaxy"
       ? 720
       : 520);
+
   const [tick, setTick] = useState(0);
   const [hovered, setHovered] = useState<string | null>(null);
   const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 });
@@ -387,6 +398,24 @@ function PatternGraphImpl(props: GraphProps) {
     props.mode === "galaxy" ? props.visibleSources : null;
   const detailPattern = props.mode === "detail" ? props.pattern : null;
   const detailSignals = props.mode === "detail" ? props.signals : null;
+
+  // Source legend (detail mode): list ONLY the sources that appear in the
+  // currently-displayed signals, in source-frequency order, with friendly
+  // labels.
+  const detailSourcesInUse = useMemo(() => {
+    if (props.mode !== "detail") return [];
+    const counts = new Map<string, number>();
+    for (const s of props.signals) {
+      counts.set(s.source, (counts.get(s.source) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([source]) => ({
+        source,
+        color: SOURCE_COLORS[source] ?? "#5a8a33",
+        label: SOURCE_LABELS[source] ?? source.replace(/_/g, " "),
+      }));
+  }, [props]);
 
   const built = useMemo(() => {
     if (props.mode === "galaxy") {
@@ -471,7 +500,16 @@ function PatternGraphImpl(props: GraphProps) {
       sim.force("cluster", cf as any);
     }
 
-    sim.on("tick", () => setTick((t) => (t + 1) % 1000));
+    // Perf polish: settle faster (default alphaMin 0.001 → 0.04 cuts the
+    // simulation tail by ~70%) and only repaint every 3rd tick (eliminates
+    // ~2/3 of React re-renders without visible jank for human eyes).
+    sim.alphaMin(0.04);
+    let tickCount = 0;
+    sim.on("tick", () => {
+      tickCount += 1;
+      if (tickCount % 3 === 0) setTick((t) => (t + 1) % 1000);
+    });
+    sim.on("end", () => setTick((t) => (t + 1) % 1000)); // final paint
     simulationRef.current = sim;
     sim.alpha(1).restart();
 
@@ -487,6 +525,26 @@ function PatternGraphImpl(props: GraphProps) {
     for (const n of built.nodes) m.set(n.id, n);
     return m;
   }, [built]);
+
+  // In galaxy mode, broadcast hover changes back to the parent dashboard so
+  // the pattern card grid below the galaxy can highlight the matching card.
+  // Resolve `hovered` (a node id) → pattern id via nodeById.
+  const onHoverPattern =
+    props.mode === "galaxy" ? props.onHoverPattern : undefined;
+  useEffect(() => {
+    if (props.mode !== "galaxy") return;
+    if (!onHoverPattern) return;
+    if (!hovered) {
+      onHoverPattern(null);
+      return;
+    }
+    const n = nodeById.get(hovered);
+    if (!n) return;
+    const pid =
+      n.patternId ??
+      (n.patternIds && n.patternIds.length > 0 ? n.patternIds[0] : null);
+    onHoverPattern(pid);
+  }, [hovered, nodeById, onHoverPattern, props.mode]);
 
   // Entity nodes that should show their label at rest (without hover).
   // Galaxy: top 2 highest-degree entities per cluster.
@@ -523,12 +581,17 @@ function PatternGraphImpl(props: GraphProps) {
 
   // ── Hover helpers ─────────────────────────────────────────────────────────
 
-  // In galaxy mode, an explicit `selectedPatternId` (drawer is open on that
-  // cluster) acts as a sticky hover so isolation persists when the mouse
-  // leaves the canvas. Live hover always wins over the sticky selection so
-  // the user can still peek at neighbouring clusters with the drawer open.
+  // In galaxy mode, three hover signals stack:
+  //   1. Live in-canvas hover (this takes priority — user is pointing at
+  //      something specific in the SVG).
+  //   2. External hover from the dashboard (e.g. pointer is over a card in
+  //      the grid below the galaxy).
+  //   3. Selected pattern (drawer is open on that cluster).
+  // Live hover wins over both. External hover wins over selection.
   const selectedPatternId =
     props.mode === "galaxy" ? props.selectedPatternId ?? null : null;
+  const externalHoveredPatternId =
+    props.mode === "galaxy" ? props.externalHoveredPatternId ?? null : null;
 
   function hoveredClusterIds(): Set<string> | null {
     if (hovered) {
@@ -542,6 +605,7 @@ function PatternGraphImpl(props: GraphProps) {
           : [];
       return new Set(ids);
     }
+    if (externalHoveredPatternId) return new Set([externalHoveredPatternId]);
     if (selectedPatternId) return new Set([selectedPatternId]);
     return null;
   }
@@ -613,7 +677,16 @@ function PatternGraphImpl(props: GraphProps) {
       return;
     }
     if (n.kind === "entity" && n.entityType && n.entitySlug) {
-      router.push(`/signals/entity/${n.entityType}/${n.entitySlug}`);
+      // In detail mode, the parent (drawer) can opt into in-place entity
+      // navigation by providing onEntitySelect. Otherwise fall back to the
+      // standalone entity page route.
+      const detailProps =
+        props.mode === "detail" ? props : null;
+      if (detailProps?.onEntitySelect) {
+        detailProps.onEntitySelect(n.entityType, n.entitySlug);
+      } else {
+        router.push(`/signals/entity/${n.entityType}/${n.entitySlug}`);
+      }
       return;
     }
     if (n.kind === "signal" && n.signal) {
@@ -1080,7 +1153,7 @@ function PatternGraphImpl(props: GraphProps) {
                   {p.title.length > 52 ? `${p.title.slice(0, 50)}…` : p.title}
                 </span>
                 <span className="pattern-graph-cluster-meta">
-                  {count} {count === 1 ? "signal" : "signals"} · {p.non_obviousness_score}/10
+                  {count} {count === 1 ? "signal" : "signals"}
                 </span>
               </button>
             );
@@ -1125,14 +1198,22 @@ function PatternGraphImpl(props: GraphProps) {
           : "Drag to pan · scroll to zoom · hover a node to focus"}
       </div>
 
-      {/* Legend — detail mode only (galaxy uses the cluster cards as its key) */}
-      {props.mode === "detail" && (
+      {/* Legend — detail mode only (galaxy uses the cluster cards as its key).
+          Shows ONLY the sources that actually appear in the displayed signals,
+          using the dashboard's full source-label catalog so we get friendly
+          names ("FDA Warning Letter", not "fda_warning_letters"). */}
+      {props.mode === "detail" && detailSourcesInUse.length > 0 && (
         <div className="pattern-graph-legend">
-          <span className="pattern-graph-legend-title">Sources</span>
-          {Object.entries(SOURCE_COLORS).map(([k, c]) => (
-            <span key={k} className="pattern-graph-legend-item">
-              <span className="pattern-graph-legend-dot" style={{ background: c }} />
-              {k.replace(/_/g, " ")}
+          <span className="pattern-graph-legend-title">
+            {detailSourcesInUse.length === 1 ? "Source" : "Sources"}
+          </span>
+          {detailSourcesInUse.map(({ source, color, label }) => (
+            <span key={source} className="pattern-graph-legend-item">
+              <span
+                className="pattern-graph-legend-dot"
+                style={{ background: color }}
+              />
+              {label}
             </span>
           ))}
         </div>

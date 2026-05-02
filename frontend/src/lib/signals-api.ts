@@ -179,10 +179,27 @@ export interface PatternEvidenceSignal {
   entity_slugs?: string[];
 }
 
+/** Phase 3 structured narrative — populated for new patterns. Legacy patterns
+ * still ship a plain string in `narrative`; the renderer detects the shape
+ * via `parseNarrative()` below. */
+export interface PatternNarrativeStruct {
+  story: string;
+  why_it_matters: string;
+  evidence: string;
+}
+
 export interface SignalPattern {
   id: string;
   title: string;
+  /** Phase 3 short headline subtitle (90-130 chars). Empty string for legacy
+   * rows. The cluster card renders this as a second line under the title. */
+  subtitle?: string;
+  /** Phase 3: stored as JSON-encoded `PatternNarrativeStruct` for new rows;
+   * stays a free-text string for legacy rows. Always typed as string here —
+   * use `parseNarrative()` to read it. */
   narrative: string;
+  /** Phase 3 pattern confidence — `low` rows are filtered server-side. */
+  confidence?: "high" | "medium";
   pattern_type: string;
   signal_ids: string[];
   entity_slugs: string[];
@@ -191,6 +208,31 @@ export interface SignalPattern {
   generated_at: string;
   visible: boolean;
   evidence_signals?: PatternEvidenceSignal[];
+}
+
+/** Read the narrative as either the new structured object or the legacy
+ * plain-text string. Returns the structured form when JSON parsing succeeds
+ * AND all three required keys are present; otherwise the original string. */
+export function parseNarrative(
+  raw: string,
+): PatternNarrativeStruct | string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed.startsWith("{")) return trimmed;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.story === "string" &&
+      typeof parsed.why_it_matters === "string" &&
+      typeof parsed.evidence === "string"
+    ) {
+      return parsed as PatternNarrativeStruct;
+    }
+  } catch {
+    /* fall through */
+  }
+  return trimmed;
 }
 
 export interface PatternDetail {
