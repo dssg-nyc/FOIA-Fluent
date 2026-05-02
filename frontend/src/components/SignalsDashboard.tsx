@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PatternGraph from "@/components/PatternGraph";
 import PatternDetailDrawer from "@/components/PatternDetailDrawer";
+import PatternThemeGalaxy from "@/components/PatternThemeGalaxy";
+import PatternCardGrid from "@/components/PatternCardGrid";
 import {
   fetchPatterns,
   fetchPersonaCatalog,
@@ -18,104 +21,19 @@ import {
   type SignalsGlobalStats,
 } from "@/lib/signals-api";
 
-// ── Constants (mirrors backend/app/data/signals_sources.py registry) ──────
-// Order here drives the filter-pill order on the dashboard. Group by family
-// for visual grouping in the chip row.
+// Source labels + colors live in lib/signal-sources.ts so they can be
+// imported by both SignalsDashboard and PatternGraph without a circular
+// module dependency. Re-exported here for backward-compat with anything
+// that still imports SOURCE_COLORS / SOURCE_LABELS from this file.
+import {
+  ALL_SOURCES,
+  SOURCE_COLORS,
+  SOURCE_LABELS,
+  SOURCE_LONG_LABELS,
+  signalKind,
+} from "@/lib/signal-sources";
 
-const SOURCE_LABELS: Record<string, string> = {
-  // Enforcement & oversight
-  gao_protests:           "GAO Protests",
-  epa_echo:               "EPA ECHO",
-  fda_warning_letters:    "FDA Warnings",
-  oversight_ig_reports:   "IG Reports",
-  gao_reports:            "GAO Reports",
-  osha_news:              "OSHA",
-  irs_news:               "IRS",
-  sec_press_releases:     "SEC",
-  ftc_press_releases:     "FTC",
-  fec_enforcement:        "FEC",
-  // Recalls & safety
-  fda_drug_recalls:       "Drug Recalls",
-  fda_food_recalls:       "Food Recalls",
-  fda_device_recalls:     "Device Recalls",
-  cpsc_recalls:           "CPSC Recalls",
-  nhtsa_recalls:          "NHTSA Recalls",
-  // Courts & legal
-  courtlistener_opinions: "Court Opinions",
-  // Research & policy
-  dhs_foia_log:           "DHS FOIA",
-  congress_gov:           "Congress.gov",
-  regulations_gov:        "Reg Dockets",
-};
-
-const SOURCE_LONG_LABELS: Record<string, string> = {
-  gao_protests:           "GAO Bid Protest Decision",
-  epa_echo:               "EPA ECHO Enforcement",
-  fda_warning_letters:    "FDA Warning Letter",
-  oversight_ig_reports:   "Inspector General Report",
-  gao_reports:            "GAO Audit / Evaluation",
-  osha_news:              "OSHA Enforcement News",
-  irs_news:               "IRS News Release",
-  sec_press_releases:     "SEC Press Release",
-  ftc_press_releases:     "FTC Press Release",
-  fec_enforcement:        "FEC Enforcement Matter",
-  fda_drug_recalls:       "FDA Drug Recall",
-  fda_food_recalls:       "FDA Food / Cosmetic Recall",
-  fda_device_recalls:     "FDA Medical Device Recall",
-  cpsc_recalls:           "CPSC Product Recall",
-  nhtsa_recalls:          "NHTSA Vehicle Recall",
-  courtlistener_opinions: "Federal Court Opinion",
-  dhs_foia_log:           "DHS FOIA Log Entry",
-  congress_gov:           "Congress.gov Bill",
-  regulations_gov:        "Regulations.gov Docket",
-};
-
-// Colors clustered by family — same hue family for related sources so the
-// filter row visually groups itself.
-const SOURCE_COLORS: Record<string, string> = {
-  // Enforcement (blues)
-  gao_protests:           "#2b66c9",
-  epa_echo:               "#1f8562",
-  fda_warning_letters:    "#6d4fc0",
-  oversight_ig_reports:   "#3a7fc1",
-  gao_reports:            "#4a8fd5",
-  osha_news:              "#0f6e8c",
-  irs_news:               "#5575b8",
-  sec_press_releases:     "#1d4ed8",
-  ftc_press_releases:     "#3651a8",
-  fec_enforcement:        "#5b6dad",
-  // Recalls (warm reds/oranges)
-  fda_drug_recalls:       "#c0392b",
-  fda_food_recalls:       "#d35400",
-  fda_device_recalls:     "#a93226",
-  cpsc_recalls:           "#c17a2a",
-  nhtsa_recalls:          "#a04020",
-  // Courts (purple)
-  courtlistener_opinions: "#7d3c98",
-  // Research (greens)
-  dhs_foia_log:           "#1f8562",
-  congress_gov:           "#5d8a3e",
-  regulations_gov:        "#2c8c4f",
-};
-
-const ALL_SOURCES = [
-  // Enforcement & oversight
-  "gao_protests", "epa_echo", "fda_warning_letters", "oversight_ig_reports",
-  "gao_reports", "osha_news", "irs_news", "sec_press_releases",
-  "ftc_press_releases", "fec_enforcement",
-  // Recalls
-  "fda_drug_recalls", "fda_food_recalls", "fda_device_recalls",
-  "cpsc_recalls", "nhtsa_recalls",
-  // Courts
-  "courtlistener_opinions",
-  // Research
-  "dhs_foia_log", "congress_gov", "regulations_gov",
-];
-
-const FOIA_REQUEST_SOURCES = new Set(["dhs_foia_log"]);
-function signalKind(source: string): "request" | "action" {
-  return FOIA_REQUEST_SOURCES.has(source) ? "request" : "action";
-}
+export { SOURCE_COLORS, SOURCE_LABELS };
 
 // ── Category taxonomy (mirrors backend/app/data/signal_categories.py) ──────
 
@@ -203,7 +121,7 @@ function dayLabel(key: string): string {
   return datePart;
 }
 
-function fmtRelative(iso: string | null | undefined): string {
+export function fmtRelative(iso: string | null | undefined): string {
   if (!iso) return "—";
   const t = new Date(iso).getTime();
   if (isNaN(t)) return "—";
@@ -264,7 +182,7 @@ function StatStrip({
 
 // ── Multi-select dropdown (Linear-style) ───────────────────────────────────
 
-function MultiSelectDropdown({
+export function MultiSelectDropdown({
   label,
   options,
   selected,
@@ -371,7 +289,7 @@ function MultiSelectDropdown({
 
 // ── Single-select dropdown (used for time-range) ──────────────────────────
 
-function SingleSelectDropdown<T extends string | number>({
+export function SingleSelectDropdown<T extends string | number>({
   label,
   value,
   options,
@@ -527,80 +445,6 @@ function SourceFilter({
         );
       })}
     </div>
-  );
-}
-
-// ── Pattern compact card ──────────────────────────────────────────────────
-
-function PatternCompactCard({
-  pattern,
-  onSelect,
-  active,
-}: {
-  pattern: SignalPattern;
-  onSelect?: (id: string) => void;
-  active?: boolean;
-}) {
-  const evidence = pattern.evidence_signals || [];
-  const sourceCounts: Record<string, number> = {};
-  for (const e of evidence) sourceCounts[e.source] = (sourceCounts[e.source] || 0) + 1;
-  const sourceBadges = Object.entries(sourceCounts);
-  const firstSentence = (pattern.narrative.split(/\n\n+/)[0] || "")
-    .split(/(?<=[.?!])\s+/)[0]
-    .trim();
-
-  const className = `signals-pattern-compact${
-    active ? " signals-pattern-compact-active" : ""
-  }`;
-  const body = (
-    <>
-      <div className="signals-pattern-compact-head">
-        <span className="signals-pattern-compact-score">
-          {pattern.non_obviousness_score}/10
-        </span>
-        <span className="signals-pattern-compact-date">
-          {fmtRelative(pattern.generated_at)}
-        </span>
-      </div>
-      <h3 className="signals-pattern-compact-title">{pattern.title}</h3>
-      {firstSentence && (
-        <p className="signals-pattern-compact-teaser">{firstSentence}</p>
-      )}
-      <div className="signals-pattern-compact-footer">
-        <span className="signals-pattern-compact-sources">
-          {sourceBadges.map(([src, count], i) => (
-            <span key={src} className="signals-pattern-compact-source">
-              {i > 0 && " · "}
-              <span
-                className="signals-pattern-compact-source-dot"
-                style={{ background: SOURCE_COLORS[src] }}
-                aria-hidden="true"
-              />
-              {SOURCE_LABELS[src]} {count}
-            </span>
-          ))}
-        </span>
-        <span className="signals-pattern-compact-open">Open →</span>
-      </div>
-    </>
-  );
-
-  if (onSelect) {
-    return (
-      <button
-        type="button"
-        className={className}
-        onClick={() => onSelect(pattern.id)}
-      >
-        {body}
-      </button>
-    );
-  }
-
-  return (
-    <Link href={`/signals/patterns/${pattern.id}`} className={className}>
-      {body}
-    </Link>
   );
 }
 
@@ -895,24 +739,113 @@ export default function SignalsDashboard() {
   const [globalStats, setGlobalStats] = useState<SignalsGlobalStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [activeSignal, setActiveSignal] = useState<Signal | null>(null);
-  const [activePatternId, setActivePatternId] = useState<string | null>(null);
+  // Drawer state lives in the URL itself — no React state, no sync effects.
+  //
+  // Why: when the user clicks an entity inside the drawer they navigate to
+  // /signals/entity/..., which unmounts this component. Browser-back from
+  // there restores /signals?pattern=<id>. Reading activePatternId directly
+  // from `searchParams` means the drawer reopens automatically on remount,
+  // with zero state-restoration plumbing. Earlier attempts kept it in
+  // useState and synced via useEffect — that fought itself across remounts
+  // because the initializer only runs once. Treating the URL as the
+  // source of truth is the simpler, correct pattern.
+  const activePatternId = searchParams?.get("pattern") ?? null;
+  // Entity layered on top of the pattern view (in-drawer stack: pattern →
+  // entity). Stored as `?entity=type:slug` so the URL is shareable. Falsy
+  // when no entity is open, in which case the drawer either shows just the
+  // pattern (if pattern is set) or is closed entirely.
+  const entityParam = searchParams?.get("entity") ?? null;
+  const [activeEntityType, activeEntitySlug] = (() => {
+    if (!entityParam) return [null, null] as const;
+    const i = entityParam.indexOf(":");
+    if (i <= 0) return [null, null] as const;
+    return [entityParam.slice(0, i), entityParam.slice(i + 1)] as const;
+  })();
+
+  // Phase 3 — single source of truth for theme view: the type filter.
+  //   filter empty   → galaxy shows the 7 theme bubbles (Level 0)
+  //   filter has 1+  → galaxy drills to clusters of those theme(s) (Level 1)
+  //                     and the card grid filters to the same types
+  // Drilled-view top-N cap so a theme with 50+ patterns doesn't recreate
+  // the original cluster-card mess.
+  const DRILLED_TOP_N = 12;
+  const [showAllInTheme, setShowAllInTheme] = useState(false);
+  const [patternTypeFilter, setPatternTypeFilter] = useState<Set<string>>(
+    new Set(),
+  );
+  // Bidirectional Galaxy ↔ Grid hover sync.
+  const [hoveredPatternId, setHoveredPatternId] = useState<string | null>(null);
 
   // Stable callback identities so PatternGraph (memo'd) doesn't re-render on
   // every parent state change. Without these, the inline arrow lambdas were
   // new refs every render → React.memo bails out → graph rebuilds.
+  // Drawer open/close go through the router so the URL is the source of
+  // truth (see comment on `activePatternId` above). `push` instead of
+  // `replace` so each pattern opening is a real history entry — browser
+  // back navigates between patterns intuitively.
   const handlePatternSelect = useCallback(
-    (pid: string) => setActivePatternId(pid),
-    [],
+    (pid: string) => {
+      router.push(`/signals?pattern=${encodeURIComponent(pid)}`, {
+        scroll: false,
+      });
+    },
+    [router],
   );
-  const handleClosePatternDrawer = useCallback(
-    () => setActivePatternId(null),
-    [],
+  const handleClosePatternDrawer = useCallback(() => {
+    router.push("/signals", { scroll: false });
+  }, [router]);
+  // Push an entity onto the in-drawer stack. Preserves any active pattern
+  // so the back-arrow inside the drawer can pop back to it.
+  const handleEntitySelect = useCallback(
+    (entityType: string, entitySlug: string) => {
+      const params = new URLSearchParams();
+      if (activePatternId) params.set("pattern", activePatternId);
+      params.set("entity", `${entityType}:${entitySlug}`);
+      router.push(`/signals?${params.toString()}`, { scroll: false });
+    },
+    [router, activePatternId],
   );
+  // Pop the entity off the stack — keep the pattern if there was one.
+  const handlePopEntity = useCallback(() => {
+    if (activePatternId) {
+      const params = new URLSearchParams();
+      params.set("pattern", activePatternId);
+      router.push(`/signals?${params.toString()}`, { scroll: false });
+    } else {
+      router.push("/signals", { scroll: false });
+    }
+  }, [router, activePatternId]);
   const handleCloseSignalDrawer = useCallback(
     () => setActiveSignal(null),
     [],
   );
+  const handleHoverPattern = useCallback(
+    (pid: string | null) => setHoveredPatternId(pid),
+    [],
+  );
+  const togglePatternType = useCallback((t: string) => {
+    setPatternTypeFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  }, []);
+  const clearPatternTypes = useCallback(() => {
+    setPatternTypeFilter(new Set());
+    setShowAllInTheme(false);
+  }, []);
+  // Theme-bubble click: REPLACE the filter with that one theme. Distinct
+  // from the grid's add/remove toggle behavior — clicking a bubble is "go
+  // to this theme", not "add to my filter".
+  const handleThemeSelect = useCallback((t: string) => {
+    setPatternTypeFilter(new Set([t]));
+    setShowAllInTheme(false);
+  }, []);
 
   // Galaxy view: client-side source filter (visual only; pattern data is
   // fetched once and re-rendered when this changes).
@@ -1107,6 +1040,35 @@ export default function SignalsDashboard() {
     [patterns],
   );
 
+  // Galaxy view derived from the type filter. Memoized so PatternGraph's
+  // `patterns` prop stays referentially stable across hover-induced
+  // re-renders — otherwise React.memo bails and the d3-force simulation
+  // restarts on every hover, causing the canvas to jitter.
+  const galaxyMode: "themes" | "drilled" =
+    patternTypeFilter.size === 0 ? "themes" : "drilled";
+
+  const drilledThemePatterns = useMemo(() => {
+    if (galaxyMode === "themes") return sortedPatterns;
+    return sortedPatterns.filter((p) =>
+      patternTypeFilter.has(p.pattern_type),
+    );
+  }, [galaxyMode, sortedPatterns, patternTypeFilter]);
+
+  const drilledGalaxyPatterns = useMemo(() => {
+    if (
+      drilledThemePatterns.length <= DRILLED_TOP_N ||
+      showAllInTheme
+    ) {
+      return drilledThemePatterns;
+    }
+    return [...drilledThemePatterns]
+      .sort(
+        (a, b) =>
+          (b.non_obviousness_score ?? 0) - (a.non_obviousness_score ?? 0),
+      )
+      .slice(0, DRILLED_TOP_N);
+  }, [drilledThemePatterns, showAllInTheme]);
+
   // Group signals by day for the feed. Preserves the existing order within
   // each group (backend returns signal_date desc).
   const grouped = useMemo(() => {
@@ -1175,42 +1137,71 @@ export default function SignalsDashboard() {
           />
         </div>
 
+        {/* Galaxy — derived from `patternTypeFilter`:
+              empty   → 7 theme bubbles (Level 0)
+              1+ types → drilled clusters of those types (Level 1) */}
         {loading && signals.length === 0 ? (
           <div className="signals-dashboard-skeleton signals-dashboard-skeleton-galaxy">
             Loading patterns…
           </div>
-        ) : sortedPatterns.length > 0 ? (
-          <PatternGraph
-            mode="galaxy"
-            patterns={sortedPatterns}
-            visibleSources={visibleSourcesForGalaxy}
-            onPatternSelect={handlePatternSelect}
-            selectedPatternId={activePatternId}
-          />
-        ) : (
+        ) : sortedPatterns.length === 0 ? (
           <div className="signals-dashboard-empty">
             No patterns yet for this filter. The AI analyst runs daily.
           </div>
+        ) : galaxyMode === "themes" ? (
+          <PatternThemeGalaxy
+            patterns={sortedPatterns}
+            onThemeSelect={handleThemeSelect}
+          />
+        ) : (
+          <div className="signals-galaxy-drilled">
+            <button
+              type="button"
+              className="signals-galaxy-back-btn"
+              onClick={clearPatternTypes}
+            >
+              ← Back to themes
+            </button>
+            {drilledThemePatterns.length > DRILLED_TOP_N && (
+              <button
+                type="button"
+                className="signals-galaxy-show-all-toggle"
+                onClick={() => setShowAllInTheme((v) => !v)}
+                title={
+                  showAllInTheme
+                    ? `Showing all ${drilledThemePatterns.length} patterns in this theme`
+                    : `Showing top ${DRILLED_TOP_N} of ${drilledThemePatterns.length}`
+                }
+              >
+                {showAllInTheme
+                  ? `Top ${DRILLED_TOP_N} only`
+                  : `Show all ${drilledThemePatterns.length}`}
+              </button>
+            )}
+            <PatternGraph
+              mode="galaxy"
+              patterns={drilledGalaxyPatterns}
+              visibleSources={visibleSourcesForGalaxy}
+              onPatternSelect={handlePatternSelect}
+              selectedPatternId={activePatternId}
+              externalHoveredPatternId={hoveredPatternId}
+              onHoverPattern={handleHoverPattern}
+            />
+          </div>
         )}
 
-        {/* Pattern cards (scrollable strip beneath galaxy) */}
+        {/* Pattern card grid (replaces the old horizontal strip) */}
         {sortedPatterns.length > 0 && (
-          <div className="signals-pattern-compact-wrap">
-            <div className="signals-pattern-compact-wrap-head">
-              <span className="signals-eyebrow">All patterns ({sortedPatterns.length})</span>
-              <span className="signals-dashboard-section-hint">Scroll to browse · click to open</span>
-            </div>
-            <div className="signals-pattern-compact-scroll">
-              {sortedPatterns.map((p) => (
-                <PatternCompactCard
-                  key={p.id}
-                  pattern={p}
-                  onSelect={handlePatternSelect}
-                  active={activePatternId === p.id}
-                />
-              ))}
-            </div>
-          </div>
+          <PatternCardGrid
+            patterns={sortedPatterns}
+            typeFilter={patternTypeFilter}
+            onToggleType={togglePatternType}
+            onClearTypes={clearPatternTypes}
+            hoveredPatternId={hoveredPatternId}
+            onHoverPattern={handleHoverPattern}
+            selectedPatternId={activePatternId}
+            onSelectPattern={handlePatternSelect}
+          />
         )}
       </section>
 
@@ -1464,7 +1455,11 @@ export default function SignalsDashboard() {
       <SignalDetailDrawer signal={activeSignal} onClose={handleCloseSignalDrawer} />
       <PatternDetailDrawer
         patternId={activePatternId}
+        entityType={activeEntityType}
+        entitySlug={activeEntitySlug}
         onClose={handleClosePatternDrawer}
+        onPopEntity={handlePopEntity}
+        onEntitySelect={handleEntitySelect}
       />
     </main>
   );

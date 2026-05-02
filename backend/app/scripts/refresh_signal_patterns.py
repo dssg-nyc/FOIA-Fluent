@@ -8,10 +8,25 @@ debounce).
 Manual invocation:
     cd backend
     python -m app.scripts.refresh_signal_patterns
+    python -m app.scripts.refresh_signal_patterns --dry-run     # print only, no DB
+    python -m app.scripts.refresh_signal_patterns --replace     # delete existing
+                                                                  # patterns first
+
+Phase 3 anti-hallucination guardrails (see plan section 0):
+  - Pattern shape adds `subtitle`, structured `narrative`, and `confidence`.
+  - System prompt forbids inferred motive, partisan framing, and outside-corpus
+    facts. Every claim must trace to text inside the cited signals.
+  - Post-processing drops patterns where:
+      * any signal_id is unknown to the input corpus
+      * any entity_slug is not in any cited signal's entity_slugs
+      * confidence == "low"
+      * fewer than 2 valid signal_ids remain
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 import logging
 import sys
 import time
@@ -30,9 +45,14 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # Sonnet 4.6 — quality matters for the headline feature. One big call per
-# run, ~$0.50/run with the wider corpus.
+# run, ~$0.75/run with the wider corpus + Phase 3's structured narrative
+# (which roughly doubles output size per pattern).
 PATTERN_MODEL = "claude-sonnet-4-6"
-PATTERN_MAX_TOKENS = 5000
+# 16K headroom for 8 patterns × ~1.5K tokens each (title + subtitle + 3-field
+# structured narrative + IDs + entity slugs + categories + score + confidence).
+# 5K used to fit the legacy 2-paragraph narrative; Phase 3 doubled output size
+# so 5K silently truncates and Claude returns an empty array.
+PATTERN_MAX_TOKENS = 16000
 
 # Phase 2.5: wider window, larger corpus, more patterns per run.
 LOOKBACK_DAYS = 60
@@ -64,6 +84,11 @@ PATTERN_TYPES = [
 
 
 # Forced tool-use schema so the response is always parseable JSON.
+#
+# Phase 3: title/subtitle become consumer-readable; narrative becomes a
+# 3-field object (story / why_it_matters / evidence) so the drawer can
+# render labeled sections; confidence is added so we can drop low-quality
+# patterns before they hit the dashboard.
 EXTRACT_PATTERNS_TOOL = {
     "name": "extract_signal_patterns",
     "description": "Identify non-obvious cross-source patterns from a corpus of FOIA signals.",
@@ -83,21 +108,87 @@ EXTRACT_PATTERNS_TOOL = {
                 ),
                 "items": {
                     "type": "object",
-                    "required": ["title", "narrative", "pattern_type", "signal_ids", "non_obviousness_score"],
+                    "required": [
+                        "title",
+                        "subtitle",
+                        "narrative",
+                        "pattern_type",
+                        "signal_ids",
+                        "non_obviousness_score",
+                        "confidence",
+                    ],
                     "properties": {
                         "title": {
                             "type": "string",
-                            "description": "Short headline (under 100 chars). E.g. 'Compounding regulatory exposure on WH Group'.",
+                            "description": (
+                                "Plain-language headline a curious non-expert can understand "
+                                "at a glance. Format: a short noun phrase followed by a colon "
+                                "or comma, then what is happening. "
+                                "Example: 'FDA retail crackdown: a dozen convenience stores cited in three days'. "
+                                "Use everyday nouns, not bureaucratese ('drug factories' not "
+                                "'CGMP cited establishments', 'safety problems' not 'warning "
+                                "letter wave'). Spell out acronyms unless universally known "
+                                "(FDA, EPA, DOJ are OK; FERC, NHTSA, CIGIE need spelling out). "
+                                "PUNCTUATION — NO em-dashes (—) and NO hyphenated compound "
+                                "adjectives anywhere in the title. Use a colon, a comma, or "
+                                "rephrase. Write 'tip over recalls' (two words) not "
+                                "'tip-over recalls'; 'high resolution' not 'high-resolution'. "
+                                "Max 70 chars. NO evaluative or partisan framing: describe "
+                                "what was DONE per the signal text, not why or how badly."
+                            ),
                         },
-                        "narrative": {
+                        "subtitle": {
                             "type": "string",
                             "description": (
-                                "2-paragraph plain English explanation of the pattern. "
-                                "First paragraph: what the pattern is and which signals join it. "
-                                "Second paragraph: why a normal user would miss this if reading "
-                                "the signals one at a time, and which content categories the "
-                                "pattern spans."
+                                "One sentence (90-130 chars) that finishes the headline's "
+                                "thought: who is affected, what is at stake per the signal text. "
+                                "Plain English. Avoid restating the headline. "
+                                "PUNCTUATION — NO em-dashes (—) and NO hyphenated compounds "
+                                "in prose. Use periods, commas, or rephrase. "
+                                "Example pair:\n"
+                                "  title='FDA cites 8 overseas drug factories for falsified records'\n"
+                                "  subtitle='Plants in India and China supplied generic prescription drugs sold in U.S. pharmacies, per FDA letters.'\n"
+                                "Do NOT speculate about consequences not visible in the corpus."
                             ),
+                        },
+                        "narrative": {
+                            "type": "object",
+                            "required": ["story", "why_it_matters", "evidence"],
+                            "properties": {
+                                "story": {
+                                    "type": "string",
+                                    "description": (
+                                        "1-2 sentences in plain English describing what the cited "
+                                        "signals TOGETHER show. Factual summary, not a "
+                                        "characterization. Every noun and verb must be supported "
+                                        "by signal text. Neutral, non-partisan phrasing only."
+                                    ),
+                                },
+                                "why_it_matters": {
+                                    "type": "string",
+                                    "description": (
+                                        "2-3 sentences naming the concrete consequence visible "
+                                        "from the signals (e.g. 'this overlaps with an open SEC "
+                                        "investigation, per signal X'). Do NOT speculate about "
+                                        "reputation, market reaction, political fallout, or "
+                                        "motive. If the consequence is not visible in the signal "
+                                        "text, write 'The signals do not yet show downstream "
+                                        "consequences.' instead of guessing."
+                                    ),
+                                },
+                                "evidence": {
+                                    "type": "string",
+                                    "description": (
+                                        "One paragraph that walks through the connected signals "
+                                        "one by one, naming each by its source and date in plain "
+                                        "English ('an EPA enforcement action filed Feb 12', NOT "
+                                        "'epa_echo source row'). Quote short fragments from "
+                                        "signal titles or summaries when appropriate. Do NOT add "
+                                        "facts not in the signal text. Do NOT name entities "
+                                        "outside `entity_slugs`."
+                                    ),
+                                },
+                            },
                         },
                         "pattern_type": {
                             "type": "string",
@@ -117,7 +208,9 @@ EXTRACT_PATTERNS_TOOL = {
                             "items": {"type": "string"},
                             "description": (
                                 "Shared entity slugs (format 'type:slug') that anchor the pattern. "
-                                "Optional — leave empty if the pattern is not entity-anchored."
+                                "Every slug listed here MUST appear in at least one cited signal's "
+                                "entity_slugs in the input corpus — do not bring in outside-knowledge "
+                                "entities (parent companies, related figures) not present in the data."
                             ),
                         },
                         "category_tags": {
@@ -139,6 +232,19 @@ EXTRACT_PATTERNS_TOOL = {
                                 "sources to spot."
                             ),
                         },
+                        "confidence": {
+                            "type": "string",
+                            "enum": ["high", "medium", "low"],
+                            "description": (
+                                "high = every claim is directly supported by 3+ signals citing "
+                                "the same entity / event / cascade. medium = supported by 2 "
+                                "signals, or by 3+ where one or two claims are inferential. "
+                                "low = the connection is plausible but several claims rest on "
+                                "a single signal or require outside knowledge. PREFER returning "
+                                "fewer high-confidence patterns to many medium/low ones. "
+                                "Patterns marked `low` will be discarded."
+                            ),
+                        },
                     },
                 },
             },
@@ -154,31 +260,77 @@ warning letters, recalls, court filings, IG reports, congressional bills,
 regulatory dockets, FOIA logs) and identify CONCRETE non-obvious patterns
 that join 2+ signals from different sources or time periods.
 
-CONSERVATIVE RULES — NON-NEGOTIABLE:
-- Only identify patterns where the connection is verifiable from the signal text.
-- A "concrete connection" means one of:
-  (a) Two or more signals share a NAMED ENTITY (company, person, agency, statute)
-  (b) Two or more signals describe the same event/contract/incident from
-      different angles (e.g. recall + SEC litigation + DOJ press)
-  (c) A temporal cascade: agency A's action → agency B's follow-on within
-      a clear window (regulatory_cascade, oversight_to_action)
-  (d) Five or more signals reflect a clear quantitative cluster
-- REJECT any speculative connection. If you cannot find {max_patterns} patterns
-  that meet this bar, return fewer. Returning 0 patterns is acceptable.
-- A pattern must reference at least 2 signal IDs from the input corpus. Use
-  the EXACT UUIDs given.
-- Do NOT invent facts. Every claim in your narrative must be grounded in
-  the input signals.
+GROUNDING — NON-NEGOTIABLE (failing any of these voids the pattern):
+- Every claim in `title`, `subtitle`, and every sub-field of `narrative` must
+  be supported by the explicit text of one or more signal IDs you list in
+  `signal_ids`. If you cannot point to the source line, leave the claim out.
+- Do NOT generalize from one example to a trend. A pattern requires 2+
+  corroborating signals. If only one signal supports a claim, drop the claim.
+- Do NOT infer motive, intent, partisan alignment, or political characterization.
+  Describe what an agency or actor *did* per the signal text, not why.
+  No 'crackdown', no 'attack', no 'targeting', no 'chilling effect' — unless
+  the signal text uses that exact framing.
+- Use neutral, descriptive verbs: 'cited', 'filed', 'recalled', 'opened a docket',
+  'subpoenaed', 'awarded', 'denied'. AVOID evaluative verbs: 'failed',
+  'botched', 'mishandled', 'covered up', 'rammed through'.
 
-DEDUP RULE:
+PUNCTUATION + STYLE — applies to title, subtitle, and every narrative field:
+- NO em-dashes (—). Use a colon, a comma, a period, or rephrase. Em-dashes
+  read as editorial flourish; this is a documentation surface, not an essay.
+- NO hyphenated compound adjectives in prose. Write 'tip over hazard' not
+  'tip-over hazard'; 'high resolution images' not 'high-resolution images';
+  'real time feed' not 'real-time feed'.
+- KEEP hyphens ONLY where they appear in formal proper names that are always
+  hyphenated (statute names, model numbers, software identifiers).
+- Do NOT name parties, candidates, or political figures unless they appear in
+  the signal text. Do NOT make claims about elections, campaigns, or party
+  policy positions.
+- If signal coverage is thin (e.g., only one source covered an event), say so
+  explicitly. 'Three EPA enforcement actions' is fine; 'an EPA crackdown' is
+  editorial.
+- Every entity named in any narrative field must appear in `entity_slugs` of
+  at least one cited signal. Do NOT bring in outside-knowledge entities
+  (e.g. a parent company not in the signal text).
+- The platform is non-partisan. Apply the above uniformly regardless of which
+  agency, company, or actor is involved.
+
+CONNECTION RULES — what counts as a real pattern:
+- A "concrete connection" means one of:
+  (a) 2+ signals share a NAMED ENTITY (company, person, agency, statute)
+  (b) 2+ signals describe the same event/contract/incident from different angles
+      (e.g. recall + SEC litigation + DOJ press)
+  (c) A temporal cascade: agency A's action → agency B's follow-on within a clear
+      window (regulatory_cascade, oversight_to_action)
+  (d) Five or more signals reflect a clear quantitative cluster
+- `coordinated_activity` requires either (a) explicit shared participants named
+  across signals, or (b) 4+ signals about the same regulatory standard, recall
+  reason, or program in a 14-day window. Two unrelated bills moving the same
+  week does NOT qualify.
+
+EXPECTED YIELD:
+- A 400-signal corpus across 19 federal sources WILL contain real cross-source
+  patterns — companies cited by multiple agencies, recall waves on a single
+  product category, oversight findings followed by enforcement, and so on.
+  Aim to surface 5-{max_patterns} CONCRETE patterns per run.
+- Returning fewer than 5 is acceptable only if the corpus genuinely lacks
+  cross-source connections. Returning 0 should be very rare.
+- The grounding rules above are about HOW to write each pattern, not whether
+  to surface it. If the connection is real and supported by signal text,
+  surface it.
+
+CONFIDENCE:
+- Mark each pattern `high`, `medium`, or `low`. Patterns marked `low` will be
+  discarded by the system before storage. Mark high when 3+ signals support
+  every claim; mark medium when 2 signals or a few claims are inferential.
+
+DEDUP:
 - The RECENT_PATTERNS section lists pattern titles surfaced in the last
   {dedup_days} days. SKIP patterns that substantially overlap with these
   unless you have NEW evidence signals that materially change the story.
-  Better to return 0 new patterns than to clutter the dashboard with
-  near-duplicates.
 
-A good pattern is something a normal user reading one signal at a time
-would MISS. A bad pattern is something obvious from a single card.
+A good pattern is something a normal user reading one signal at a time would
+MISS. A bad pattern is something obvious from a single card, or something that
+requires inference beyond the signal text.
 
 Return your analysis via the extract_signal_patterns tool."""
 
@@ -297,69 +449,171 @@ async def extract_patterns_via_claude(
             logger.error("Claude pattern extraction failed: %s", e)
             return []
 
+    # Log Claude's stop reason and any text blocks for diagnostics. When the
+    # model returns an empty patterns array, the text block usually explains
+    # why ("the corpus is mostly routine enforcement, no cross-source pattern
+    # qualifies under the rules").
+    stop_reason = data.get("stop_reason")
+    usage = data.get("usage", {})
+    logger.info(
+        "Claude response: stop_reason=%s in_tokens=%s out_tokens=%s",
+        stop_reason, usage.get("input_tokens"), usage.get("output_tokens"),
+    )
     for block in data.get("content", []):
-        if block.get("type") == "tool_use" and block.get("name") == "extract_signal_patterns":
-            return (block.get("input") or {}).get("patterns", []) or []
+        btype = block.get("type")
+        if btype == "text":
+            text = (block.get("text") or "").strip()
+            if text:
+                logger.info("Claude text block: %s", text[:600])
+        elif btype == "tool_use" and block.get("name") == "extract_signal_patterns":
+            patterns = (block.get("input") or {}).get("patterns", []) or []
+            if not patterns:
+                logger.warning(
+                    "Claude returned empty patterns array — model "
+                    "decided no pattern in the 400-signal corpus meets the rules. "
+                    "Check the system prompt's caution-vs-find balance."
+                )
+            return patterns
 
     logger.warning("Claude returned no tool_use block")
     return []
 
 
+def _validate_pattern(
+    p: dict,
+    *,
+    valid_signal_ids: set[str],
+    signal_entity_slugs_by_id: dict[str, set[str]],
+) -> tuple[bool, str, list[str], list[str]]:
+    """Phase 3 grounding guards. Returns (ok, reason, kept_signal_ids, kept_entity_slugs).
+
+    Drops the pattern if:
+      - confidence is "low"
+      - fewer than 2 of its signal_ids exist in the input corpus
+      - any entity_slug is not present in any cited signal's entity_slugs
+        (we filter those out rather than reject the whole pattern, but if
+         every slug is dropped we keep the pattern minus its entity anchor).
+    """
+    confidence = (p.get("confidence") or "high").strip().lower()
+    if confidence not in {"high", "medium"}:
+        return False, f"confidence={confidence!r}", [], []
+
+    raw_ids = p.get("signal_ids") or []
+    sig_ids = [sid for sid in raw_ids if sid in valid_signal_ids]
+    if len(sig_ids) < 2:
+        return (
+            False,
+            f"only {len(sig_ids)} of {len(raw_ids)} signal_ids exist in corpus",
+            sig_ids,
+            [],
+        )
+
+    raw_slugs = p.get("entity_slugs") or []
+    valid_slugs_for_pattern: set[str] = set()
+    for sid in sig_ids:
+        valid_slugs_for_pattern |= signal_entity_slugs_by_id.get(sid, set())
+    kept_slugs = [s for s in raw_slugs if s in valid_slugs_for_pattern]
+
+    return True, "ok", sig_ids, kept_slugs
+
+
 def insert_patterns(
-    supabase, patterns: list[dict], valid_signal_ids: set[str]
-) -> int:
-    """Insert patterns into signal_patterns. Defensive against Claude
-    hallucinating signal IDs not in the input corpus."""
-    inserted = 0
+    supabase,
+    patterns: list[dict],
+    *,
+    valid_signal_ids: set[str],
+    signal_entity_slugs_by_id: dict[str, set[str]],
+    dry_run: bool = False,
+) -> dict[str, int]:
+    """Insert patterns into signal_patterns with Phase 3 grounding guards.
+
+    Returns a dict with insert/drop counters per reason."""
+    counters = {"inserted": 0, "dropped_confidence": 0, "dropped_signals": 0, "errors": 0}
+
     for p in patterns:
-        try:
-            sig_ids = [sid for sid in (p.get("signal_ids") or []) if sid in valid_signal_ids]
-            if len(sig_ids) < 2:
-                logger.warning(
-                    "  skipping pattern %r — fewer than 2 valid signal IDs",
-                    p.get("title", "")[:60],
-                )
-                continue
+        title_short = (p.get("title") or "?")[:60]
+        ok, reason, sig_ids, kept_slugs = _validate_pattern(
+            p,
+            valid_signal_ids=valid_signal_ids,
+            signal_entity_slugs_by_id=signal_entity_slugs_by_id,
+        )
+        if not ok:
+            if reason.startswith("confidence="):
+                counters["dropped_confidence"] += 1
+            else:
+                counters["dropped_signals"] += 1
+            logger.info("  ✗ DROP  %s — %s", title_short, reason)
+            continue
 
-            # Categories on the pattern; derive persona_tags from them so the
-            # legacy persona-filter UI keeps working.
-            cats = filter_categories(p.get("category_tags") or [])
-            personas = derive_persona_tags(cats)
+        # Categories on the pattern; derive persona_tags from them so the
+        # legacy persona-filter UI keeps working.
+        cats = filter_categories(p.get("category_tags") or [])
+        personas = derive_persona_tags(cats)
 
-            row = {
-                "title": (p.get("title") or "")[:300],
-                "narrative": (p.get("narrative") or "").strip(),
-                "pattern_type": (p.get("pattern_type") or "").strip(),
-                "signal_ids": sig_ids,
-                "entity_slugs": p.get("entity_slugs") or [],
-                "persona_tags": personas,
-                "non_obviousness_score": int(p.get("non_obviousness_score", 0) or 0),
-                "visible": True,
-            }
-            supabase.table("signal_patterns").insert(row).execute()
-            inserted += 1
+        # Narrative is now an object — JSON-encode for storage in the TEXT
+        # column. Backward-compatible: legacy rows are plain strings, the
+        # frontend renders both shapes.
+        narrative_obj = p.get("narrative")
+        if isinstance(narrative_obj, dict):
+            narrative_serialized = json.dumps(narrative_obj, ensure_ascii=False)
+        else:
+            narrative_serialized = (narrative_obj or "").strip()
+
+        row = {
+            "title": (p.get("title") or "")[:300],
+            "subtitle": (p.get("subtitle") or "")[:400],
+            "narrative": narrative_serialized,
+            "pattern_type": (p.get("pattern_type") or "").strip(),
+            "signal_ids": sig_ids,
+            "entity_slugs": kept_slugs,
+            "persona_tags": personas,
+            "non_obviousness_score": int(p.get("non_obviousness_score", 0) or 0),
+            "confidence": (p.get("confidence") or "high").strip().lower(),
+            "visible": True,
+        }
+
+        if dry_run:
+            counters["inserted"] += 1
             logger.info(
-                "  + [%d/10] %s (%d signals, cats=%s)",
+                "  ✓ DRY   [%s · %d/10] %s",
+                row["confidence"], row["non_obviousness_score"], row["title"][:80],
+            )
+            continue
+
+        try:
+            supabase.table("signal_patterns").insert(row).execute()
+            counters["inserted"] += 1
+            logger.info(
+                "  ✓ INS   [%s · %d/10] %s (%d signals, cats=%s)",
+                row["confidence"],
                 row["non_obviousness_score"],
                 row["title"][:80],
                 len(sig_ids),
                 cats,
             )
         except Exception as e:
-            logger.warning(
-                "  insert failed for pattern %r: %s",
-                (p.get("title") or "?")[:60],
-                e,
-            )
-    return inserted
+            counters["errors"] += 1
+            logger.warning("  ! ERR   %s — %s", title_short, str(e)[:200])
+
+    return counters
 
 
 # ── Public entry point — used by both the CLI wrapper and the in-app
 #    dispatcher (app.services.ingest.runner.maybe_run_pattern_detection).
 
-async def run_pattern_detection() -> dict[str, Any]:
+async def run_pattern_detection(
+    *, dry_run: bool = False, replace: bool = False
+) -> dict[str, Any]:
     """Run one full pattern-detection cycle. Idempotent. Returns a status
-    dict suitable for logging or returning from an admin endpoint."""
+    dict suitable for logging or returning from an admin endpoint.
+
+    Args:
+        dry_run: extract via Claude but do NOT write to Supabase. Useful
+            for previewing prompt changes without committing them.
+        replace: delete all existing rows from signal_patterns before
+            inserting the new ones. Use for a one-shot regeneration that
+            should fully replace the corpus rather than append.
+    """
     from app.config import settings
 
     if not settings.anthropic_api_key:
@@ -373,8 +627,9 @@ async def run_pattern_detection() -> dict[str, Any]:
     started = time.monotonic()
 
     logger.info(
-        "Pattern detection: lookback=%dd cap=%d signals max=%d patterns",
-        LOOKBACK_DAYS, MAX_SIGNALS_PER_RUN, MAX_PATTERNS_PER_RUN,
+        "Pattern detection: lookback=%dd cap=%d signals max=%d patterns "
+        "dry_run=%s replace=%s",
+        LOOKBACK_DAYS, MAX_SIGNALS_PER_RUN, MAX_PATTERNS_PER_RUN, dry_run, replace,
     )
 
     signals = fetch_recent_signals(supabase)
@@ -392,9 +647,16 @@ async def run_pattern_detection() -> dict[str, Any]:
             "runtime_seconds": round(runtime, 1),
         }
 
-    recent_titles = fetch_recent_pattern_titles(supabase)
-    if recent_titles:
-        logger.info("Dedup context: %d recent pattern titles", len(recent_titles))
+    # Skip the dedup-context query when --replace is set: we want the model
+    # to regenerate the corpus from scratch, not to "skip" titles that the
+    # caller is explicitly asking to overwrite.
+    if replace:
+        recent_titles: list[str] = []
+        logger.info("Replace mode: skipping dedup context")
+    else:
+        recent_titles = fetch_recent_pattern_titles(supabase)
+        if recent_titles:
+            logger.info("Dedup context: %d recent pattern titles", len(recent_titles))
 
     corpus_text = build_corpus_text(signals)
     logger.info("Calling Claude with %d chars of corpus", len(corpus_text))
@@ -404,19 +666,57 @@ async def run_pattern_detection() -> dict[str, Any]:
     )
     logger.info("Claude returned %d pattern candidates", len(patterns))
 
+    # Build entity-slug index for grounding validation.
     valid_ids = {s["id"] for s in signals}
-    inserted = insert_patterns(supabase, patterns, valid_ids)
+    signal_entity_slugs_by_id: dict[str, set[str]] = {}
+    for s in signals:
+        signal_entity_slugs_by_id[s["id"]] = set(s.get("entity_slugs") or [])
+
+    # Replace-mode delete is gated on Claude returning at least one candidate
+    # so a bad prompt or rate-limit response can't leave the table empty.
+    if replace and not dry_run and len(patterns) > 0:
+        try:
+            # Postgres requires a WHERE clause on DELETE via PostgREST. The
+            # `not is null` predicate matches every row.
+            supabase.table("signal_patterns").delete().not_.is_("id", "null").execute()
+            logger.info("Replace mode: cleared signal_patterns")
+        except Exception as e:
+            logger.warning("Replace mode: clear failed: %s", e)
+    elif replace and not dry_run:
+        logger.warning(
+            "Replace mode: skipping clear because Claude returned 0 candidates "
+            "(would have left the table empty)"
+        )
+
+    counters = insert_patterns(
+        supabase,
+        patterns,
+        valid_signal_ids=valid_ids,
+        signal_entity_slugs_by_id=signal_entity_slugs_by_id,
+        dry_run=dry_run,
+    )
 
     runtime = time.monotonic() - started
     logger.info(
-        "[signal_patterns] inserted=%d candidates=%d runtime=%.1fs",
-        inserted, len(patterns), runtime,
+        "[signal_patterns] candidates=%d inserted=%d "
+        "dropped_confidence=%d dropped_signals=%d errors=%d runtime=%.1fs",
+        len(patterns),
+        counters["inserted"],
+        counters["dropped_confidence"],
+        counters["dropped_signals"],
+        counters["errors"],
+        runtime,
     )
     return {
         "status": "succeeded",
         "signals": len(signals),
         "candidates": len(patterns),
-        "patterns_inserted": inserted,
+        "patterns_inserted": counters["inserted"],
+        "dropped_confidence": counters["dropped_confidence"],
+        "dropped_signals": counters["dropped_signals"],
+        "errors": counters["errors"],
+        "dry_run": dry_run,
+        "replace": replace,
         "runtime_seconds": round(runtime, 1),
     }
 
@@ -424,7 +724,23 @@ async def run_pattern_detection() -> dict[str, Any]:
 # ── CLI wrapper for manual invocation ──────────────────────────────────────
 
 async def main():
-    result = await run_pattern_detection()
+    parser = argparse.ArgumentParser(description="Run pattern detection.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Extract patterns but do not write to the database. "
+             "Useful for previewing prompt changes.",
+    )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Delete all existing patterns before inserting. Phase 3 "
+             "regeneration uses this to fully replace the legacy corpus "
+             "rather than append.",
+    )
+    args = parser.parse_args()
+
+    result = await run_pattern_detection(dry_run=args.dry_run, replace=args.replace)
     if result.get("status") == "error":
         logger.error("pattern detection error: %s", result.get("error"))
         sys.exit(1)
