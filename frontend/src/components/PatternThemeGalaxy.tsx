@@ -105,6 +105,10 @@ export default function PatternThemeGalaxy({
 
   // Group patterns by pattern_type and pick the theme metadata. Only types
   // that actually have ≥1 pattern get a bubble — empty themes don't render.
+  // Seeding (x, y) here rather than in a post-mount useEffect: if x/y stayed
+  // undefined through the first render, every bubble would paint at the
+  // canvas center, then jump outward when the simulation kicked in. Seeding
+  // up-front means the first paint already shows them in a ring.
   const bubbles = useMemo<ThemeBubble[]>(() => {
     const byType = new Map<string, SignalPattern[]>();
     for (const p of patterns) {
@@ -121,9 +125,6 @@ export default function PatternThemeGalaxy({
           blurb: "Other patterns",
           color: "#5a8a33",
         };
-      // Radius scales with pattern count — sqrt so 30 patterns isn't 6× the
-      // radius of 5. Floor is generous so the bubble label always fits inside
-      // even when a theme has only 1 pattern.
       const radius = Math.max(95, Math.min(135, 70 + Math.sqrt(ps.length) * 14));
       out.push({
         id: t,
@@ -136,26 +137,27 @@ export default function PatternThemeGalaxy({
     }
     // Stable order: most populous theme first, alphabetical tiebreaker.
     out.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+    // Ring seed. Starting from -π/2 puts the largest theme at the top.
+    const cx = width / 2;
+    const cy = canvasHeight / 2;
+    const r = Math.min(width, canvasHeight) * 0.3;
+    out.forEach((b, i) => {
+      const angle = (i / out.length) * Math.PI * 2 - Math.PI / 2;
+      b.x = cx + Math.cos(angle) * r;
+      b.y = cy + Math.sin(angle) * r;
+    });
     return out;
-  }, [patterns]);
+  }, [patterns, width, canvasHeight]);
 
   // Simulation — center + collide only. No links between bubbles, so the
   // layout is effectively a stable cloud arranged around the canvas center.
+  // Bubbles are pre-seeded in their useMemo (above) so we don't need a
+  // separate seeding step here.
   useEffect(() => {
     if (bubbles.length === 0) return;
-
-    // Seed positions in a ring around the center so the first frame already
-    // looks reasonable (the simulation refines from there).
     const cx = width / 2;
     const cy = canvasHeight / 2;
-    const r = Math.min(width, canvasHeight) * 0.28;
-    bubbles.forEach((b, i) => {
-      if (b.x === undefined) {
-        const angle = (i / bubbles.length) * Math.PI * 2 - Math.PI / 2;
-        b.x = cx + Math.cos(angle) * r;
-        b.y = cy + Math.sin(angle) * r;
-      }
-    });
 
     const sim = forceSimulation<ThemeBubble>(bubbles)
       .force("center", forceCenter<ThemeBubble>(cx, cy).strength(0.06))
@@ -280,16 +282,41 @@ export default function PatternThemeGalaxy({
         </g>
       </svg>
 
-      {/* Hovered-theme blurb pill, anchored bottom-center. */}
-      <div
-        className={`pattern-theme-galaxy-blurb${
-          focusedTheme ? " pattern-theme-galaxy-blurb-visible" : ""
-        }`}
-      >
-        {focusedTheme
-          ? bubbles.find((b) => b.id === focusedTheme)?.blurb
-          : "Hover a bubble to see what it groups · click to drill in"}
-      </div>
+      {/* Hovered-theme blurb pill, anchored bottom-center. When a theme is
+          focused, the pill takes the theme's color as a left-edge accent so
+          it visually ties back to the bubble the user is pointing at. */}
+      {(() => {
+        const focused = focusedTheme
+          ? bubbles.find((b) => b.id === focusedTheme)
+          : null;
+        return (
+          <div
+            className={`pattern-theme-galaxy-blurb${
+              focused ? " pattern-theme-galaxy-blurb-visible" : ""
+            }`}
+            style={
+              focused
+                ? ({
+                    ["--blurb-accent" as string]: focused.color,
+                  } as React.CSSProperties)
+                : undefined
+            }
+          >
+            {focused ? (
+              <>
+                <span className="pattern-theme-galaxy-blurb-label">
+                  {focused.label}
+                </span>
+                <span className="pattern-theme-galaxy-blurb-text">
+                  {focused.blurb}
+                </span>
+              </>
+            ) : (
+              "Hover a bubble to see what it groups"
+            )}
+          </div>
+        );
+      })()}
 
     </div>
   );
