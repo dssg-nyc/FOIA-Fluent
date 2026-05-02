@@ -1095,15 +1095,23 @@ export default function SignalsDashboard() {
             surfaces the patterns that connect them.
           </p>
         </div>
+      </header>
+
+      {/* Tier 1 — global stat strip */}
+      <StatStrip stats={globalStats} />
+
+      {/* Role picker — moved here from the header so the role of the chips
+          is obvious from the description that sits right above them. */}
+      <section className="signals-persona-section">
+        <p className="signals-persona-section-hint">
+          Pick a role to focus the feed and patterns.
+        </p>
         <PersonaPills
           personas={personas}
           selected={selected}
           onToggle={togglePersona}
         />
-      </header>
-
-      {/* Tier 1 — global stat strip */}
-      <StatStrip stats={globalStats} />
+      </section>
 
       {/* Galaxy hero */}
       <section className="signals-dashboard-section">
