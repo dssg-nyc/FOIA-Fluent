@@ -517,6 +517,22 @@ def _validate_pattern(
     return True, "ok", sig_ids, kept_slugs
 
 
+# Threshold for treating two patterns as the same underlying cluster. Tuned
+# from production data: legit re-detections on overlapping evidence fall in
+# 0.6–1.0; distinct clusters that happen to share one signal fall below 0.3.
+# 0.5 is the safe gap.
+SIGNAL_OVERLAP_DEDUP_THRESHOLD = 0.5
+
+
+def _signal_jaccard(a: list[str], b: list[str]) -> float:
+    """Jaccard similarity on signal_id sets. 0.0 if either side is empty."""
+    A = set(a or [])
+    B = set(b or [])
+    if not A or not B:
+        return 0.0
+    return len(A & B) / len(A | B)
+
+
 def insert_patterns(
     supabase,
     patterns: list[dict],
@@ -527,8 +543,41 @@ def insert_patterns(
 ) -> dict[str, int]:
     """Insert patterns into signal_patterns with Phase 3 grounding guards.
 
-    Returns a dict with insert/drop counters per reason."""
-    counters = {"inserted": 0, "dropped_confidence": 0, "dropped_signals": 0, "errors": 0}
+    Includes signal-overlap dedup: if a candidate's signal_ids overlap an
+    existing visible pattern's by Jaccard ≥ SIGNAL_OVERLAP_DEDUP_THRESHOLD,
+    the older row is deleted and the new one inserted in its place. This
+    catches the case where Claude rephrases a previously-surfaced cluster
+    on a later run (the title-string dedup-context is too weak on its own
+    because each run produces a slightly different headline).
+
+    Returns a dict with insert/drop/replace counters per reason."""
+    counters = {
+        "inserted": 0,
+        "replaced": 0,
+        "dropped_confidence": 0,
+        "dropped_signals": 0,
+        "errors": 0,
+    }
+
+    # Snapshot existing visible patterns once. We keep the in-memory list
+    # in sync as we delete/insert so candidates within the same run also
+    # dedupe against each other.
+    existing_visible: list[dict] = []
+    if not dry_run:
+        try:
+            result = (
+                supabase.table("signal_patterns")
+                .select("id,title,signal_ids,generated_at")
+                .eq("visible", True)
+                .execute()
+            )
+            existing_visible = result.data or []
+            logger.info(
+                "Overlap dedup: snapshot %d existing visible patterns",
+                len(existing_visible),
+            )
+        except Exception as e:
+            logger.warning("Overlap dedup: snapshot fetch failed: %s", e)
 
     for p in patterns:
         title_short = (p.get("title") or "?")[:60]
@@ -580,9 +629,52 @@ def insert_patterns(
             )
             continue
 
+        # Signal-overlap dedup: if a previously-surfaced pattern shares
+        # ≥ threshold of its evidence signals with this candidate, treat
+        # them as the same cluster. Delete the older row before inserting
+        # so the freshest title/narrative wins.
+        overlap_match: dict | None = None
+        for ev in existing_visible:
+            if (
+                _signal_jaccard(sig_ids, ev.get("signal_ids") or [])
+                >= SIGNAL_OVERLAP_DEDUP_THRESHOLD
+            ):
+                overlap_match = ev
+                break
+        if overlap_match:
+            try:
+                supabase.table("signal_patterns").delete().eq(
+                    "id", overlap_match["id"]
+                ).execute()
+                existing_visible = [
+                    e for e in existing_visible if e["id"] != overlap_match["id"]
+                ]
+                counters["replaced"] += 1
+                logger.info(
+                    "  ↻ REPLACE older %s — %s",
+                    overlap_match["id"][:8],
+                    (overlap_match.get("title") or "")[:60],
+                )
+            except Exception as e:
+                logger.warning("  ! REPLACE delete failed: %s", str(e)[:200])
+
         try:
-            supabase.table("signal_patterns").insert(row).execute()
+            inserted = supabase.table("signal_patterns").insert(row).execute()
             counters["inserted"] += 1
+            # Track the new row so subsequent candidates in this run also
+            # dedupe against it (Claude occasionally returns two near-twin
+            # clusters in one shot).
+            inserted_id = None
+            if inserted and getattr(inserted, "data", None):
+                inserted_id = (inserted.data[0] or {}).get("id")
+            existing_visible.append(
+                {
+                    "id": inserted_id or "new",
+                    "title": row["title"],
+                    "signal_ids": sig_ids,
+                    "generated_at": "",
+                }
+            )
             logger.info(
                 "  ✓ INS   [%s · %d/10] %s (%d signals, cats=%s)",
                 row["confidence"],
@@ -698,10 +790,11 @@ async def run_pattern_detection(
 
     runtime = time.monotonic() - started
     logger.info(
-        "[signal_patterns] candidates=%d inserted=%d "
+        "[signal_patterns] candidates=%d inserted=%d replaced=%d "
         "dropped_confidence=%d dropped_signals=%d errors=%d runtime=%.1fs",
         len(patterns),
         counters["inserted"],
+        counters["replaced"],
         counters["dropped_confidence"],
         counters["dropped_signals"],
         counters["errors"],
@@ -712,6 +805,7 @@ async def run_pattern_detection(
         "signals": len(signals),
         "candidates": len(patterns),
         "patterns_inserted": counters["inserted"],
+        "patterns_replaced": counters["replaced"],
         "dropped_confidence": counters["dropped_confidence"],
         "dropped_signals": counters["dropped_signals"],
         "errors": counters["errors"],
