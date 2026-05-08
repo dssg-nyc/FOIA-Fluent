@@ -11,6 +11,19 @@ interface DisplayMessage {
   toolStatus?: string;
 }
 
+/** Pages where the chat panel is hidden entirely. Marketing surface (/),
+ * the OTP login page, and the OTP callback page — none of them are
+ * working surfaces, and showing the chat there flashes it before the
+ * hard-nav after sign-in completes. Keeping this in one helper so the
+ * render check and the auto-open transition agree on the rule. */
+function isAuthPage(pathname: string): boolean {
+  return (
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname.startsWith("/auth")
+  );
+}
+
 function getPageContext(pathname: string): ChatContext {
   if (pathname.startsWith("/draft")) return { page: "draft" };
   if (pathname.startsWith("/requests/")) {
@@ -73,10 +86,11 @@ export default function ChatPanel() {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  // When the user moves from the landing page into the app, auto-open the
-  // chat so they see it for the first time as they enter.
+  // When the user moves from a marketing/auth page into the app proper,
+  // auto-open the chat so they see it for the first time as they enter.
+  // Includes the OTP /login → /hub transition after sign-in completes.
   useEffect(() => {
-    if (prevPathname.current === "/" && pathname !== "/") {
+    if (isAuthPage(prevPathname.current) && !isAuthPage(pathname)) {
       if (typeof window !== "undefined" && window.innerWidth > 768) {
         setOpen(true);
       }
@@ -241,11 +255,12 @@ export default function ChatPanel() {
     return html;
   }
 
-  // Hide the chat entirely on the landing page — it's a marketing surface,
-  // not a working surface. Also hide for guests (incl. while we're still
-  // resolving the initial session check) so it never flashes for someone
-  // about to be redirected to /login.
-  if (pathname === "/" || !signedIn) {
+  // Hide the chat on marketing + auth surfaces (landing, /login,
+  // /auth/callback) so it doesn't flash during the post-OTP hard-nav
+  // before the user reaches the real app. Also hide for guests, including
+  // while we're still resolving the initial session check, so it never
+  // appears for someone who's about to be redirected away.
+  if (isAuthPage(pathname) || !signedIn) {
     return null;
   }
 
