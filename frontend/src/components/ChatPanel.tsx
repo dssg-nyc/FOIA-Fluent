@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import { streamChat, ChatMessage, ChatContext } from "@/lib/chat-api";
-import { getAccessToken } from "@/lib/supabase";
+import { getAccessToken, supabase } from "@/lib/supabase";
 
 interface DisplayMessage {
   role: "user" | "assistant";
@@ -40,6 +40,28 @@ export default function ChatPanel() {
   const [toolStatus, setToolStatus] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Track sign-in state so the chat hides for guests. Initialized from
+  // the current session and updated via onAuthStateChange so logging
+  // in/out flips the panel without a refresh.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!supabase) {
+      setSignedIn(false);
+      return;
+    }
+    let cancelled = false;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) setSignedIn(!!data.session);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSignedIn(!!session);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -220,8 +242,10 @@ export default function ChatPanel() {
   }
 
   // Hide the chat entirely on the landing page — it's a marketing surface,
-  // not a working surface.
-  if (pathname === "/") {
+  // not a working surface. Also hide for guests (incl. while we're still
+  // resolving the initial session check) so it never flashes for someone
+  // about to be redirected to /login.
+  if (pathname === "/" || !signedIn) {
     return null;
   }
 

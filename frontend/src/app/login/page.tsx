@@ -57,12 +57,21 @@ function LoginForm() {
     if (authError) {
       setError(authError.message);
     } else {
+      // Existing tracking-request flow always wins.
       const pending = localStorage.getItem("pending_track_request");
       if (pending) {
         router.replace("/auth/callback");
-      } else {
-        router.replace("/dashboard");
+        return;
       }
+      // Honor ?next= from the middleware redirect, but only allow
+      // same-origin paths (must start with "/" and not "//") so a crafted
+      // link can't bounce a verified user to an external site.
+      const rawNext = searchParams.get("next");
+      const safeNext =
+        rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
+          ? rawNext
+          : null;
+      router.replace(safeNext ?? "/dashboard");
     }
   }
 
