@@ -195,9 +195,69 @@ def get_signals_health() -> dict[str, Any]:
     except Exception as e:
         logger.warning(f"pattern engine status fetch failed: {e}")
 
+    # Scheduled (non-signal) jobs — hub stats refresh, etc. Source rows are
+    # written to the same `signals_source_runs` table with a synthetic
+    # `source_id` matching the job_id, so we just look them up here.
+    from app.services.scheduled_refresh import SCHEDULED_JOBS  # local import to dodge cycles
+
+    scheduled_out: list[dict] = []
+    for job in SCHEDULED_JOBS:
+        last_at: Optional[str] = None
+        last_status: Optional[str] = None
+        last_error: Optional[str] = None
+        items_inserted_7d = 0
+        runs_succeeded_7d = 0
+        runs_failed_7d = 0
+        try:
+            # Most recent row (any status) for last-run summary
+            recent = (
+                supabase.table("signals_source_runs")
+                .select("started_at, status, error_message")
+                .eq("source_id", job.job_id)
+                .order("started_at", desc=True)
+                .limit(1)
+                .execute()
+            ).data or []
+            if recent:
+                last_at = recent[0].get("started_at")
+                last_status = recent[0].get("status")
+                last_error = recent[0].get("error_message")
+
+            # 7d aggregates
+            week_rows = (
+                supabase.table("signals_source_runs")
+                .select("status, items_inserted")
+                .eq("source_id", job.job_id)
+                .gte("started_at", week_ago)
+                .execute()
+            ).data or []
+            for r in week_rows:
+                if r.get("status") == "succeeded":
+                    runs_succeeded_7d += 1
+                    items_inserted_7d += int(r.get("items_inserted") or 0)
+                elif r.get("status") == "failed":
+                    runs_failed_7d += 1
+        except Exception as e:
+            logger.warning("scheduled job %s health fetch failed: %s", job.job_id, e)
+
+        scheduled_out.append({
+            "job_id": job.job_id,
+            "label": job.label,
+            "family": job.family,
+            "description": job.description,
+            "cadence_days": job.cadence_days,
+            "last_run_at": last_at,
+            "last_run_status": last_status,
+            "last_run_error": last_error,
+            "runs_succeeded_7d": runs_succeeded_7d,
+            "runs_failed_7d": runs_failed_7d,
+            "items_inserted_7d": items_inserted_7d,
+        })
+
     return {
         "generated_at": now.isoformat(),
         "sources": sources_out,
+        "scheduled_jobs": scheduled_out,
         "totals": {
             "sources_registered": len(sources_out),
             "sources_enabled": enabled_count,

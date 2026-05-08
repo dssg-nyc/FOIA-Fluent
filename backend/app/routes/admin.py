@@ -194,3 +194,30 @@ async def force_run_patterns_route(
     from app.services.ingest.runner import force_run_pattern_detection
     result = await force_run_pattern_detection()
     return result
+
+
+@router.post("/scheduled/run/{job_id}")
+async def force_run_scheduled_job_route(
+    job_id: str,
+    x_admin_secret: str = Header(default="", alias="X-Admin-Secret"),
+):
+    """Force-run one scheduled refresh job (e.g. `hub_federal_stats`),
+    bypassing its weekly cadence. Synchronous — the federal hub run takes
+    ~30s, jurisdiction takes ~3-5min, so the request can be slow."""
+    if not settings.admin_secret or x_admin_secret != settings.admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid or missing admin secret")
+
+    from app.services.ingest.runner import _get_supabase
+    from app.services.scheduled_refresh import SCHEDULED_JOBS, run_if_due
+
+    job = next((j for j in SCHEDULED_JOBS if j.job_id == job_id), None)
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown job_id {job_id!r}. Known: "
+            + ", ".join(j.job_id for j in SCHEDULED_JOBS),
+        )
+
+    supabase = _get_supabase()
+    status = await run_if_due(supabase, job, force=True)
+    return {"job_id": job_id, "status": status}

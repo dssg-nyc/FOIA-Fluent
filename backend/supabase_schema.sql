@@ -484,3 +484,40 @@ ALTER TABLE personas
 -- ── Phase 2.5: Run-level metadata (for PDF-URL dedup, etc.) ─────────────────
 ALTER TABLE signals_source_runs
     ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+
+-- ── Email-wall + paywall foundation ─────────────────────────────────────────
+-- Phase 1 only reads `user_id` (any signed-in user is "free"). The Stripe
+-- columns are forward-compat for Phase 2 — no UI/code reads them yet.
+-- A trigger on auth.users auto-inserts a row on every new signup so the
+-- table is never out of sync with auth.users.
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id                 UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    subscription_status     TEXT NOT NULL DEFAULT 'free'
+                            CHECK (subscription_status IN ('free', 'active', 'past_due', 'canceled')),
+    stripe_customer_id      TEXT,
+    stripe_subscription_id  TEXT,
+    current_period_end      TIMESTAMPTZ,
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_own_profile_select" ON user_profiles
+    FOR SELECT USING (auth.uid() = user_id);
+-- Inserts/updates happen through service-role (auth trigger + Stripe webhook),
+-- never through the user's own JWT, so no anon INSERT/UPDATE policy.
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.user_profiles (user_id) VALUES (NEW.id)
+    ON CONFLICT (user_id) DO NOTHING;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();

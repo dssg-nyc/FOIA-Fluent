@@ -11,7 +11,7 @@ from app.config import settings
 from app.models.insights import (
     HeroStats, VolumeTrend, TransparencyTrend, AgencyRequests,
     ExemptionItem, ProcessingTimeTrend, CostStaffingTrend,
-    AppealsLitigationTrend, NewsDigestItem, InsightsOverview,
+    AppealsLitigationTrend, InsightsOverview,
 )
 
 logger = logging.getLogger(__name__)
@@ -221,35 +221,6 @@ def get_appeals_litigation(rows: list[dict]) -> list[AppealsLitigationTrend]:
     return trends
 
 
-def get_news_digest() -> list[NewsDigestItem]:
-    """Fetch latest news digest entries."""
-    supabase = _get_supabase()
-    if not supabase:
-        return []
-    try:
-        result = (
-            supabase.table("foia_news_digest")
-            .select("*")
-            .order("published_date", desc=True)
-            .limit(10)
-            .execute()
-        )
-        return [
-            NewsDigestItem(
-                title=r["title"],
-                summary=r["summary"],
-                source_url=r.get("source_url") or "",
-                source_name=r.get("source_name") or "",
-                category=r.get("category") or "",
-                published_date=str(r.get("published_date") or ""),
-            )
-            for r in (result.data or [])
-        ]
-    except Exception as e:
-        logger.error(f"News digest query failed: {e}")
-        return []
-
-
 def get_insights_overview() -> InsightsOverview:
     """Assemble full insights response from all sections."""
     rows = _get_cache_rows()
@@ -268,6 +239,5 @@ def get_insights_overview() -> InsightsOverview:
         processing_times=get_processing_times(rows),
         costs_staffing=get_costs_staffing(rows),
         appeals_litigation=get_appeals_litigation(rows),
-        news_digest=get_news_digest(),
         last_refreshed=last_refreshed,
     )

@@ -15,11 +15,13 @@ export default function HomePage() {
     });
   }, []);
 
-  // /hub is public, so the primary CTA always routes there. Only the label
-  // changes based on auth state — "Open the app" reads naturally for a
-  // returning user, "Start exploring" invites first-time visitors in.
-  const primaryHref = "/hub";
-  const primaryLabel = signedIn ? "Open the app" : "Start exploring";
+  // Signed-in users go straight into the app; signed-out users go to
+  // /login (the email-OTP flow). Middleware also catches direct hits to
+  // gated routes and redirects them through /login?next=..., so any link
+  // we render is "safe" — pre-login users land on the right page after
+  // verifying their email.
+  const primaryHref = signedIn ? "/hub" : "/login";
+  const primaryLabel = signedIn ? "Open the app" : "Sign up free";
 
   return (
     <main className="home">
@@ -33,19 +35,11 @@ export default function HomePage() {
             <a href="#features" className="home-nav-link">
               Features
             </a>
-            <Link href="/signals" className="home-nav-link">
-              Live Signals
-            </Link>
-            <Link href="/hub" className="home-nav-link">
-              Transparency Hub
-            </Link>
-            <a
-              href="https://github.com/dssg-nyc/FOIA-Fluent"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="home-nav-link"
-            >
-              GitHub
+            <a href="#how" className="home-nav-link">
+              How it works
+            </a>
+            <a href="#audience" className="home-nav-link">
+              Who it&rsquo;s for
             </a>
             <Link href={signedIn ? "/hub" : "/login"} className="home-nav-cta">
               {signedIn ? "Open app →" : "Sign in →"}
@@ -74,13 +68,8 @@ export default function HomePage() {
             <Link href={primaryHref} className="home-cta-primary">
               {primaryLabel} →
             </Link>
-            <a
-              href="https://github.com/dssg-nyc/FOIA-Fluent"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="home-cta-secondary"
-            >
-              View on GitHub ↗
+            <a href="#features" className="home-cta-secondary">
+              See what&rsquo;s inside ↓
             </a>
           </div>
         </div>
@@ -155,7 +144,7 @@ export default function HomePage() {
               <li>Save any document to a persistent research library</li>
             </ul>
             <Link href={signedIn ? "/draft" : "/login?next=/draft"} className="home-spotlight-link">
-              Try Discover &amp; Draft →
+              {signedIn ? "Open Discover & Draft →" : "Sign in to use Discover & Draft →"}
             </Link>
           </div>
           <div className="home-spotlight-shot">
@@ -187,10 +176,10 @@ export default function HomePage() {
               <li>Cross source patterns refreshed daily</li>
               <li>Interactive force directed graph of the connections</li>
               <li>Live feed grouped by day, with a slide in detail view</li>
-              <li>Free to explore without signing in</li>
+              <li>Drill from a theme bubble to the underlying signals</li>
             </ul>
-            <Link href="/signals" className="home-spotlight-link">
-              Open Live Signals →
+            <Link href={signedIn ? "/signals" : "/login?next=/signals"} className="home-spotlight-link">
+              {signedIn ? "Open Live Signals →" : "Sign in to explore Live Signals →"}
             </Link>
           </div>
           <div className="home-spotlight-shot">
@@ -238,8 +227,8 @@ export default function HomePage() {
                 by real enforcement within a clear window.
               </li>
             </ul>
-            <Link href="/signals" className="home-spotlight-link">
-              Explore the galaxy →
+            <Link href={signedIn ? "/signals" : "/login?next=/signals"} className="home-spotlight-link">
+              {signedIn ? "Explore the galaxy →" : "Sign in to explore the galaxy →"}
             </Link>
           </div>
           <div className="home-spotlight-shot">
@@ -270,10 +259,10 @@ export default function HomePage() {
               <li>Agency by agency deep dives, with exemption patterns</li>
               <li>Interactive state level map</li>
               <li>FOIA at a Glance, Volume Trends, Appeals and Litigation</li>
-              <li>Daily news digest of FOIA in the press</li>
+              <li>17 years of FOIA.gov analytics in one view</li>
             </ul>
-            <Link href="/hub" className="home-spotlight-link">
-              Open Transparency Hub →
+            <Link href={signedIn ? "/hub" : "/login?next=/hub"} className="home-spotlight-link">
+              {signedIn ? "Open Transparency Hub →" : "Sign in to open the Hub →"}
             </Link>
           </div>
           <div className="home-spotlight-shot">
@@ -317,14 +306,14 @@ export default function HomePage() {
                 cited for every claim. Answers come from tool results and
                 verified reference data, never from the model alone.
               </p>
-              <span className="home-small-note">Available everywhere</span>
+              <span className="home-small-note">Available on every page</span>
             </div>
           </div>
         </div>
       </section>
 
       {/* HOW IT WORKS */}
-      <section className="home-how">
+      <section id="how" className="home-how">
         <div className="home-inner">
           <div className="home-section-head">
             <span className="home-eyebrow">How it works</span>
@@ -366,7 +355,7 @@ export default function HomePage() {
       </section>
 
       {/* WHO IT'S FOR */}
-      <section className="home-audience">
+      <section id="audience" className="home-audience">
         <div className="home-inner">
           <div className="home-section-head">
             <span className="home-eyebrow">Who it is for</span>
@@ -398,22 +387,18 @@ export default function HomePage() {
       {/* FINAL CTA */}
       <section className="home-final">
         <div className="home-inner home-final-inner">
-          <h2 className="home-final-title">Start investigating.</h2>
+          <h2 className="home-final-title">
+            {signedIn ? "Welcome back." : "Get started."}
+          </h2>
           <p className="home-final-sub">
-            Free to use. Sign in with your email.
+            {signedIn
+              ? "Pick up where you left off."
+              : "Sign in with your email — we send a one-time code, no password to remember."}
           </p>
           <div className="home-cta-row">
             <Link href={primaryHref} className="home-cta-primary">
               {primaryLabel} →
             </Link>
-            <a
-              href="https://github.com/dssg-nyc/FOIA-Fluent"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="home-cta-secondary"
-            >
-              View on GitHub ↗
-            </a>
           </div>
         </div>
       </section>

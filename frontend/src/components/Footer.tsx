@@ -35,33 +35,6 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Open source column */}
-          <div className="footer-col">
-            <div className="footer-col-title">Open Source</div>
-            <ul className="footer-links">
-              <li>
-                <a href="https://github.com/dssg-nyc/FOIA-Fluent" target="_blank" rel="noopener noreferrer" className="footer-link">
-                  View on GitHub
-                </a>
-              </li>
-              <li>
-                <a href="https://github.com/dssg-nyc/FOIA-Fluent/issues" target="_blank" rel="noopener noreferrer" className="footer-link">
-                  Report an issue
-                </a>
-              </li>
-              <li>
-                <a href="https://github.com/dssg-nyc/FOIA-Fluent/pulls" target="_blank" rel="noopener noreferrer" className="footer-link">
-                  Contribute
-                </a>
-              </li>
-              <li>
-                <a href="https://www.nyc-dssg.org/" target="_blank" rel="noopener noreferrer" className="footer-link">
-                  NYC-DSSG
-                </a>
-              </li>
-            </ul>
-          </div>
-
           {/* Contact column */}
           <div className="footer-col">
             <div className="footer-col-title">Contact</div>

@@ -342,6 +342,17 @@ async def run_due_sources(*, force: bool = False) -> list[RunResult]:
         except Exception as e:
             logger.exception(f"pattern detection trigger raised: {e}")
 
+    # Hub refresh + any other periodic non-signal job. Runs every hourly
+    # tick but the scheduler short-circuits via per-job cadence (default
+    # 7 days), so the actual MuckRock pulls happen weekly. Failures are
+    # logged + recorded but don't propagate — a broken hub-stats refresh
+    # mustn't block the next signals tick.
+    try:
+        from app.services.scheduled_refresh import run_due_scheduled_jobs
+        await run_due_scheduled_jobs(supabase)
+    except Exception as e:
+        logger.exception(f"scheduled_refresh dispatch raised: {e}")
+
     return results
 
 

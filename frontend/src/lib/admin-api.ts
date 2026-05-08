@@ -81,9 +81,24 @@ export interface SignalsHealthTotals {
   patterns_count_total: number;
 }
 
+export interface ScheduledJobHealth {
+  job_id: string;
+  label: string;
+  family: string;
+  description: string;
+  cadence_days: number;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  last_run_error: string | null;
+  runs_succeeded_7d: number;
+  runs_failed_7d: number;
+  items_inserted_7d: number;
+}
+
 export interface SignalsHealthResponse {
   generated_at: string;
   sources: SignalsSourceHealth[];
+  scheduled_jobs: ScheduledJobHealth[];
   totals: SignalsHealthTotals;
 }
 
@@ -139,5 +154,28 @@ export async function triggerPatternRun(): Promise<PatternRunResult> {
   });
   if (res.status === 403) throw new Error("Invalid admin secret (403)");
   if (!res.ok) throw new Error(`Pattern run failed: ${res.status}`);
+  return res.json();
+}
+
+export interface ScheduledJobRunResult {
+  job_id: string;
+  status: string;
+}
+
+export async function triggerScheduledJob(
+  jobId: string,
+): Promise<ScheduledJobRunResult> {
+  const secret = getAdminSecret();
+  if (!secret) throw new Error("No admin secret set");
+  const res = await fetch(
+    `${API_URL}/api/v1/admin/scheduled/run/${encodeURIComponent(jobId)}`,
+    {
+      method: "POST",
+      headers: { "X-Admin-Secret": secret },
+      cache: "no-store",
+    },
+  );
+  if (res.status === 403) throw new Error("Invalid admin secret (403)");
+  if (!res.ok) throw new Error(`Scheduled job run failed: ${res.status}`);
   return res.json();
 }

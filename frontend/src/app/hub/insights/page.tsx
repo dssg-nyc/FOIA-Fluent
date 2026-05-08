@@ -319,68 +319,6 @@ export default function InsightsPage() {
           </div>
         </div>
 
-        {/* ── Section 10: News Digest — grouped by category ── */}
-        {data.news_digest.length > 0 && (() => {
-          const CATEGORY_META: Record<string, { label: string; icon: string; color: string }> = {
-            court_case: { label: "Court Cases & Litigation", icon: "\u2696\ufe0f", color: "#dc2626" },
-            investigation: { label: "Investigations & Oversight", icon: "\ud83d\udd0d", color: "#7c3aed" },
-            policy: { label: "Policy & Legislation", icon: "\ud83d\udcdc", color: "#1863dc" },
-            report: { label: "Reports & Analysis", icon: "\ud83d\udcca", color: "#059669" },
-            news: { label: "News & Updates", icon: "\ud83d\udcf0", color: "#d97706" },
-          };
-          const CATEGORY_ORDER = ["court_case", "investigation", "policy", "report", "news"];
-
-          // Group items by category
-          const grouped: Record<string, typeof data.news_digest> = {};
-          for (const item of data.news_digest) {
-            const cat = item.category || "news";
-            if (!grouped[cat]) grouped[cat] = [];
-            grouped[cat].push(item);
-          }
-
-          return (
-            <section className="insights-digest">
-              <h2 className="hub-resources-title">FOIA News & Developments</h2>
-              <p className="hub-resources-subtitle">
-                Curated from {new Set(data.news_digest.map(d => d.source_name)).size} sources across government transparency and press freedom organizations.
-              </p>
-
-              {CATEGORY_ORDER.filter(cat => grouped[cat]?.length).map(cat => {
-                const meta = CATEGORY_META[cat] || CATEGORY_META.news;
-                const items = grouped[cat];
-                return (
-                  <div key={cat} className="insights-digest-category">
-                    <h3 className="insights-digest-category-title" style={{ borderLeftColor: meta.color }}>
-                      {meta.icon} {meta.label}
-                      <span className="insights-digest-count">{items.length}</span>
-                    </h3>
-                    <div className="insights-digest-list">
-                      {items.map((item, i) => (
-                        <a
-                          key={i}
-                          href={item.source_url || "#"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="insights-digest-item"
-                        >
-                          <div className="insights-digest-item-header">
-                            <span className="insights-digest-source">{item.source_name}</span>
-                            {item.published_date && (
-                              <span className="insights-digest-date">{item.published_date}</span>
-                            )}
-                          </div>
-                          <div className="insights-digest-item-title">{item.title}</div>
-                          <p className="insights-digest-item-summary">{item.summary}</p>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          );
-        })()}
-
         {/* ── Resources ── */}
         <section className="hub-resources">
           <h2 className="hub-resources-title">FOIA Resources</h2>

@@ -11,7 +11,6 @@ Run manually or on a weekly schedule:
 import asyncio
 import logging
 import statistics
-import sys
 from datetime import datetime, timezone
 
 import httpx
@@ -45,8 +44,14 @@ STATE_ABBREVS = {
 
 
 async def fetch_state_jurisdictions(client: httpx.AsyncClient) -> list[dict]:
-    """Fetch all state-level jurisdictions (children of federal jurisdiction)."""
-    jurisdictions = []
+    """Fetch all state-level jurisdictions (children of federal jurisdiction).
+
+    Raises on a first-page fetch failure so the scheduler records the run
+    as `failed` rather than a silent zero-item success. See the matching
+    note in `refresh_hub_stats.fetch_all_agencies`.
+    """
+    jurisdictions: list[dict] = []
+    first_page_error: Exception | None = None
     page = 1
     while True:
         try:
@@ -65,6 +70,8 @@ async def fetch_state_jurisdictions(client: httpx.AsyncClient) -> list[dict]:
             data = resp.json()
         except Exception as e:
             logger.error(f"MuckRock jurisdiction API error on page {page}: {e}")
+            if page == 1:
+                first_page_error = e
             break
 
         results = data.get("results", [])
@@ -79,6 +86,11 @@ async def fetch_state_jurisdictions(client: httpx.AsyncClient) -> list[dict]:
         page += 1
         await asyncio.sleep(0.3)
 
+    if not jurisdictions and first_page_error is not None:
+        raise RuntimeError(
+            f"MuckRock /jurisdiction/ returned no rows — upstream failure: "
+            f"{first_page_error}"
+        )
     return jurisdictions
 
 
@@ -168,18 +180,34 @@ def compute_jurisdiction_stats(agencies: list[dict]) -> dict:
     }
 
 
-async def main():
+async def run_jurisdiction_refresh() -> dict[str, int]:
+    """Fetch state-level jurisdictions + their agencies from MuckRock and
+    upsert into `jurisdiction_cache`, `agency_stats_cache`, and
+    `jurisdiction_stats_cache`. Long-running (~3-5 min) — meant for the
+    weekly schedule.
+
+    Returns counters compatible with `signals_source_runs`:
+        items_fetched   = total agency rows seen across all states
+        items_inserted  = agency rows successfully upserted
+        items_failed    = upserts that raised
+    Jurisdiction-level upserts (~50 states + their stats rows) aren't
+    counted separately to keep the column semantics the same as ingest
+    sources.
+    """
     from app.config import settings
 
     if not settings.supabase_url or not settings.supabase_service_key:
-        logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set.")
-        sys.exit(1)
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set.")
 
     # Use the Supabase Python SDK — same pattern as refresh_hub_stats.py
     from supabase import create_client
     supabase = create_client(settings.supabase_url, settings.supabase_service_key)
 
     now = datetime.now(timezone.utc).isoformat()
+
+    total_fetched = 0
+    total_upserted = 0
+    total_failed = 0
 
     async with httpx.AsyncClient(
         headers={"Accept": "application/json", "User-Agent": "FOIA-Fluent/1.0"},
@@ -220,6 +248,7 @@ async def main():
 
             agencies = await fetch_agencies_for_jurisdiction(client, jid)
             logger.info(f"  Found {len(agencies)} agencies in {jname}")
+            total_fetched += len(agencies)
 
             # Upsert each agency individually (matches working federal pattern)
             a_upserted = 0
@@ -262,8 +291,10 @@ async def main():
                 try:
                     supabase.table("agency_stats_cache").upsert(row, on_conflict="id").execute()
                     a_upserted += 1
+                    total_upserted += 1
                 except Exception as e:
                     logger.warning(f"  Failed agency {item['id']} ({item['name']}): {e}")
+                    total_failed += 1
 
             logger.info(f"  Upserted {a_upserted}/{len(agencies)} agencies for {jname}")
 
@@ -305,8 +336,16 @@ async def main():
             except Exception as e:
                 logger.warning(f"  Failed jurisdiction stats for {jname}: {e}")
 
-    logger.info("Done refreshing jurisdiction stats.")
+    logger.info(
+        "Done refreshing jurisdiction stats. fetched=%d upserted=%d failed=%d",
+        total_fetched, total_upserted, total_failed,
+    )
+    return {
+        "items_fetched": total_fetched,
+        "items_inserted": total_upserted,
+        "items_failed": total_failed,
+    }
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_jurisdiction_refresh())

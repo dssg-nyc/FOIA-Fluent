@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 function LoginForm() {
@@ -12,7 +12,6 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [hasPendingRequest, setHasPendingRequest] = useState(false);
   const searchParams = useSearchParams();
-  const router = useRouter();
 
   useEffect(() => {
     setHasPendingRequest(
@@ -57,12 +56,24 @@ function LoginForm() {
     if (authError) {
       setError(authError.message);
     } else {
+      // Existing tracking-request flow always wins.
       const pending = localStorage.getItem("pending_track_request");
       if (pending) {
-        router.replace("/auth/callback");
-      } else {
-        router.replace("/dashboard");
+        window.location.href = "/auth/callback";
+        return;
       }
+      // Honor ?next= from the middleware redirect, but only allow
+      // same-origin paths (must start with "/" and not "//") so a crafted
+      // link can't bounce a verified user to an external site.
+      const rawNext = searchParams.get("next");
+      const safeNext =
+        rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
+          ? rawNext
+          : null;
+      // Hard navigation (not router.replace) so the next request carries
+      // the freshly-written Supabase cookies — soft client-side nav races
+      // with the cookie write and gets bounced by the middleware.
+      window.location.href = safeNext ?? "/hub";
     }
   }
 
