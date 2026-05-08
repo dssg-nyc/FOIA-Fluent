@@ -59,15 +59,6 @@ class AppealsLitigationTrend(BaseModel):
     overturn_rate: float = 0
 
 
-class NewsDigestItem(BaseModel):
-    title: str
-    summary: str
-    source_url: str = ""
-    source_name: str = ""
-    category: str = ""
-    published_date: str | None = None
-
-
 class InsightsOverview(BaseModel):
     hero_stats: HeroStats
     volume_trends: list[VolumeTrend] = []
@@ -78,5 +69,4 @@ class InsightsOverview(BaseModel):
     processing_times: list[ProcessingTimeTrend] = []
     costs_staffing: list[CostStaffingTrend] = []
     appeals_litigation: list[AppealsLitigationTrend] = []
-    news_digest: list[NewsDigestItem] = []
     last_refreshed: str | None = None

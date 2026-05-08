@@ -56,15 +56,6 @@ export interface AppealsLitigationTrend {
   overturn_rate: number;
 }
 
-export interface NewsDigestItem {
-  title: string;
-  summary: string;
-  source_url: string;
-  source_name: string;
-  category: string;
-  published_date: string | null;
-}
-
 export interface InsightsOverview {
   hero_stats: HeroStats;
   volume_trends: VolumeTrend[];
@@ -75,7 +66,6 @@ export interface InsightsOverview {
   processing_times: ProcessingTimeTrend[];
   costs_staffing: CostStaffingTrend[];
   appeals_litigation: AppealsLitigationTrend[];
-  news_digest: NewsDigestItem[];
   last_refreshed: string | null;
 }
 

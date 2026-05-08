@@ -12,7 +12,6 @@ Railway cron: set to run Sundays at 3am UTC.
 """
 import asyncio
 import logging
-import sys
 from datetime import datetime, timezone
 
 import httpx
@@ -30,8 +29,16 @@ from app.scripts.scoring import compute_transparency_score
 
 
 async def fetch_all_agencies(client: httpx.AsyncClient) -> list[dict]:
-    """Fetch all federal agencies from MuckRock (jurisdiction=10), paginated."""
-    agencies = []
+    """Fetch all federal agencies from MuckRock (jurisdiction=10), paginated.
+
+    Raises if the very first page fails — a total fetch failure (e.g.
+    MuckRock returning 404 on every endpoint variant, as happened spring
+    2026) would otherwise look identical to "no new data" in the admin
+    health UI. Failing loudly lets the scheduler record the run as
+    failed and the dashboard can show it red.
+    """
+    agencies: list[dict] = []
+    first_page_error: Exception | None = None
     page = 1
     while page <= MAX_PAGES:
         try:
@@ -49,6 +56,8 @@ async def fetch_all_agencies(client: httpx.AsyncClient) -> list[dict]:
             data = resp.json()
         except Exception as e:
             logger.error(f"MuckRock API error on page {page}: {e}")
+            if page == 1:
+                first_page_error = e
             break
 
         results = data.get("results", [])
@@ -63,15 +72,27 @@ async def fetch_all_agencies(client: httpx.AsyncClient) -> list[dict]:
         page += 1
         await asyncio.sleep(0.3)   # be polite to MuckRock's API
 
+    if not agencies and first_page_error is not None:
+        raise RuntimeError(
+            f"MuckRock /agency/ returned no agencies — upstream failure: "
+            f"{first_page_error}"
+        )
     return agencies
 
 
-async def main():
+async def run_federal_refresh() -> dict[str, int]:
+    """Fetch all federal agencies from MuckRock and upsert into
+    `agency_stats_cache`. Idempotent — safe to run on a weekly schedule.
+
+    Returns counters compatible with `signals_source_runs`:
+        items_fetched, items_inserted, items_failed
+    so the in-app scheduler can record runs in the same table the admin
+    health dashboard already reads.
+    """
     from app.config import settings
 
     if not settings.supabase_url or not settings.supabase_service_key:
-        logger.error("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set.")
-        sys.exit(1)
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set.")
 
     from supabase import create_client
     supabase = create_client(settings.supabase_url, settings.supabase_service_key)
@@ -137,7 +158,12 @@ async def main():
             skipped += 1
 
     logger.info(f"Done. Upserted: {upserted}, Skipped: {skipped}")
+    return {
+        "items_fetched": len(raw_agencies),
+        "items_inserted": upserted,
+        "items_failed": skipped,
+    }
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_federal_refresh())

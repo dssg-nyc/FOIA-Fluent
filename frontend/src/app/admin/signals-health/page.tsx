@@ -12,6 +12,7 @@ import {
   getSignalsHealth,
   getRecentRuns,
   triggerPatternRun,
+  triggerScheduledJob,
   getAdminSecret,
   setAdminSecret,
   clearAdminSecret,
@@ -19,6 +20,7 @@ import {
   type SignalsSourceHealth,
   type SignalsRunRow,
   type PatternRunResult,
+  type ScheduledJobHealth,
 } from "@/lib/admin-api";
 
 function formatRelative(iso: string | null): string {
@@ -62,6 +64,23 @@ export default function SignalsHealthPage() {
   const [runsLoading, setRunsLoading] = useState(false);
   const [patternRunning, setPatternRunning] = useState(false);
   const [patternResult, setPatternResult] = useState<PatternRunResult | null>(null);
+  const [jobRunning, setJobRunning] = useState<string | null>(null);
+  const [jobResult, setJobResult] = useState<{ job_id: string; status: string; error?: string } | null>(null);
+
+  async function handleRunJob(jobId: string) {
+    setJobRunning(jobId);
+    setJobResult(null);
+    try {
+      const result = await triggerScheduledJob(jobId);
+      setJobResult(result);
+      const fresh = await getSignalsHealth();
+      setData(fresh);
+    } catch (e) {
+      setJobResult({ job_id: jobId, status: "error", error: (e as Error).message });
+    } finally {
+      setJobRunning(null);
+    }
+  }
 
   async function handleRunPatterns() {
     setPatternRunning(true);
@@ -257,6 +276,49 @@ export default function SignalsHealthPage() {
           {patternRunning ? "running…" : "Run patterns now"}
         </button>
       </section>
+
+      {data.scheduled_jobs && data.scheduled_jobs.length > 0 && (
+        <section style={styles.scheduledBox}>
+          <div style={styles.patternLabel}>Scheduled jobs</div>
+          <p style={{ fontSize: "0.78rem", color: "#6b7280", margin: "0.25rem 0 0.5rem" }}>
+            Hub stats refresh runs from inside the hourly signals dispatcher.
+            Each job has its own cadence; non-due runs short-circuit at no cost.
+          </p>
+          <table style={{ ...styles.table, marginTop: "0.5rem" }}>
+            <thead>
+              <tr>
+                <th style={styles.th}>status</th>
+                <th style={styles.th}>job</th>
+                <th style={styles.th}>cadence</th>
+                <th style={styles.th}>last run</th>
+                <th style={styles.th}>7d ok / fail</th>
+                <th style={styles.th}>items 7d</th>
+                <th style={styles.th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.scheduled_jobs.map((j) => (
+                <ScheduledJobRow
+                  key={j.job_id}
+                  j={j}
+                  running={jobRunning === j.job_id}
+                  resultMessage={
+                    jobResult && jobResult.job_id === j.job_id
+                      ? jobResult.error
+                        ? `error: ${jobResult.error}`
+                        : `✓ ${jobResult.status}`
+                      : null
+                  }
+                  resultIsError={
+                    jobResult?.job_id === j.job_id && Boolean(jobResult?.error)
+                  }
+                  onRun={() => handleRunJob(j.job_id)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <table style={styles.table}>
         <thead>
@@ -455,6 +517,96 @@ function SourceRow({
   );
 }
 
+function ScheduledJobRow({
+  j,
+  running,
+  resultMessage,
+  resultIsError,
+  onRun,
+}: {
+  j: ScheduledJobHealth;
+  running: boolean;
+  resultMessage: string | null;
+  resultIsError: boolean;
+  onRun: () => void;
+}) {
+  const badge = statusBadge(j.last_run_status);
+  return (
+    <tr style={styles.tr}>
+      <td style={styles.td}>
+        <span style={{ ...styles.badge, background: badge.color }}>
+          {badge.label}
+        </span>
+      </td>
+      <td style={styles.td}>
+        <code style={{ fontWeight: 600 }}>{j.job_id}</code>
+        <div style={{ color: "#6b7280", fontSize: "0.78rem" }}>{j.label}</div>
+        {j.description && (
+          <div style={{ color: "#9ca3af", fontSize: "0.74rem", marginTop: 2 }}>
+            {j.description}
+          </div>
+        )}
+      </td>
+      <td style={styles.td}>{j.cadence_days}d</td>
+      <td style={styles.td}>
+        {formatRelative(j.last_run_at)}
+        {j.last_run_error && (
+          <div
+            style={{
+              color: "#dc2626",
+              fontSize: "0.78rem",
+              marginTop: 2,
+              maxWidth: 240,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={j.last_run_error}
+          >
+            {j.last_run_error.slice(0, 60)}
+          </div>
+        )}
+      </td>
+      <td style={styles.td}>
+        <span style={{ color: "#16a34a" }}>{j.runs_succeeded_7d}</span>
+        {" / "}
+        <span style={{ color: j.runs_failed_7d > 0 ? "#dc2626" : "#6b7280" }}>
+          {j.runs_failed_7d}
+        </span>
+      </td>
+      <td style={styles.td}>
+        <strong>{j.items_inserted_7d}</strong>
+      </td>
+      <td style={styles.td}>
+        <button
+          onClick={onRun}
+          disabled={running}
+          style={{
+            ...styles.gateBtn,
+            padding: "0.4rem 0.75rem",
+            fontSize: "0.78rem",
+            opacity: running ? 0.5 : 1,
+            cursor: running ? "wait" : "pointer",
+          }}
+        >
+          {running ? "running…" : "Run now"}
+        </button>
+        {resultMessage && (
+          <div
+            style={{
+              marginTop: "0.35rem",
+              fontSize: "0.74rem",
+              color: resultIsError ? "#dc2626" : "#16a34a",
+            }}
+          >
+            {resultMessage}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 // Inline styles keep this page self-contained (no global-css dependencies)
 const styles: Record<string, React.CSSProperties> = {
   wrap: {
@@ -481,6 +633,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     gap: "1rem",
+    padding: "0.85rem 1rem",
+    background: "#fafafa",
+    border: "1px solid #e5e7eb",
+    borderRadius: 8,
+    marginBottom: "1.25rem",
+  },
+  scheduledBox: {
     padding: "0.85rem 1rem",
     background: "#fafafa",
     border: "1px solid #e5e7eb",
