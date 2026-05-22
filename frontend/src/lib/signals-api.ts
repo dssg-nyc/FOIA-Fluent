@@ -240,7 +240,7 @@ export interface PatternDetail {
   signals: Signal[];
 }
 
-export async function fetchPatterns(personas?: string[], limit = 50): Promise<{ patterns: SignalPattern[]; count: number }> {
+export async function fetchPatterns(personas?: string[], limit = 200): Promise<{ patterns: SignalPattern[]; count: number }> {
   const params = new URLSearchParams();
   if (personas && personas.length > 0) params.set("personas", personas.join(","));
   params.set("limit", String(limit));

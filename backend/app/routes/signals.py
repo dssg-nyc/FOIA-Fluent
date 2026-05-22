@@ -103,9 +103,17 @@ def get_entity_signals_route(entity_type: str, entity_slug: str, limit: int = 10
 # ── Phase 3.5 — Patterns Feed ───────────────────────────────────────────────
 
 @router.get("/patterns")
-def get_patterns_route(personas: Optional[str] = Query(default=None), limit: int = 50):
+def get_patterns_route(
+    personas: Optional[str] = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+):
     """Public AI-detected cross-source patterns. No auth required so the marketing
-    landing page can show them."""
+    landing page can show them.
+
+    Default raised to 200 so the dashboard's pattern count matches
+    `signals/stats.total_patterns_visible`. The visible-pattern population
+    sits around 80-120 with the current dedup rules; bumping the default
+    means a single fetch covers everything without paging."""
     persona_list: list[str] = []
     if personas:
         persona_list = [p.strip() for p in personas.split(",") if p.strip()]
