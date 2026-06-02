@@ -167,7 +167,7 @@ function DiscoveriesInner() {
   }
 
   return (
-    <main className="container-wide">
+    <main className="container-wide" data-tour="discoveries-page">
       <header className="signals-header">
         <span className="signals-eyebrow">Your research library</span>
         <h1 className="signals-page-title">My Discoveries</h1>

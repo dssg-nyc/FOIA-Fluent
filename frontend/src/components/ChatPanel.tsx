@@ -113,6 +113,14 @@ export default function ChatPanel() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [open]);
 
+  // Collapse the chat while the product tour runs so its panel doesn't overlap
+  // the tour, and so the minimized bubble is visible for the assistant step.
+  useEffect(() => {
+    const collapse = () => setOpen(false);
+    window.addEventListener("foiafluent.tour-started", collapse);
+    return () => window.removeEventListener("foiafluent.tour-started", collapse);
+  }, []);
+
   const sendMessage = useCallback(async () => {
     const text = input.trim();
     if (!text || streaming) return;

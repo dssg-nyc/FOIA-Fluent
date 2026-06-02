@@ -425,6 +425,15 @@ export default function Sidebar() {
                   <div className="sidebar-profile-menu" role="menu">
                     <button
                       className="sidebar-profile-menu-item"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        window.dispatchEvent(new Event("foiafluent.replay-tour"));
+                      }}
+                    >
+                      Take the tour
+                    </button>
+                    <button
+                      className="sidebar-profile-menu-item"
                       onClick={handleSignOut}
                     >
                       Sign out

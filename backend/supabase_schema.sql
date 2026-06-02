@@ -521,3 +521,12 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ── Onboarding tour completion ─────────────────────────────────────────────
+-- Tracks whether a user has completed (or dismissed) the guided product tour.
+-- NULL = not completed → the tour auto-launches on next app load. Set once the
+-- tour is finished or skipped. Written via the service-role backend (upsert), so
+-- no new RLS policy is needed; the existing users_own_profile_select policy still
+-- lets the frontend read its own row.
+ALTER TABLE user_profiles
+    ADD COLUMN IF NOT EXISTS tour_completed_at TIMESTAMPTZ DEFAULT NULL;

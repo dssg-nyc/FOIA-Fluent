@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 from app.config import settings
-from app.routes import admin, search, draft, tracking, hub, jurisdictions, insights, chat, signals, discoveries, saved_searches
+from app.routes import admin, search, draft, tracking, hub, jurisdictions, insights, chat, signals, discoveries, saved_searches, user
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,7 @@ app.include_router(chat.router, prefix="/api/v1")
 app.include_router(signals.router, prefix="/api/v1")
 app.include_router(discoveries.router, prefix="/api/v1")
 app.include_router(saved_searches.router, prefix="/api/v1")
+app.include_router(user.router, prefix="/api/v1")
 
 
 @app.get("/health")

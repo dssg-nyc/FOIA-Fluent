@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import Footer from "@/components/Footer";
 import ChatPanel from "@/components/ChatPanel";
+import TourOverlay from "@/components/TourOverlay";
 import { Analytics } from "@vercel/analytics/next";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -38,6 +39,7 @@ export default function RootLayout({
           </main>
         </div>
         <ChatPanel />
+        <TourOverlay />
         <Analytics />
       </body>
     </html>
