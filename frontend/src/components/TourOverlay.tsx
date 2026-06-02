@@ -389,28 +389,56 @@ export default function TourOverlay() {
   // ── Scroll-gate: note when the user reaches the bottom (copy swaps; manual Next) ─
   useEffect(() => {
     if (!started || !isScrollGate) return;
-    // Two failure modes the original `check()`-on-mount approach hit:
-    //   1. The Insights page renders charts incrementally — on mount the
-    //      document is still short, scrolledToBottom() returns true, and
-    //      reachedBottom flips on before the user touches anything.
-    //   2. A genuinely short page (no scrollbar) would have the user
-    //      stuck if we only counted scroll events.
-    // Solution: count only real scroll events for tall pages, but after a
-    // grace window fall back to "if there's nothing to scroll, advance".
+    // Tricky correctness story here:
+    //   1. The Insights / Hub / States pages render data incrementally —
+    //      on mount the document is still short, scrolledToBottom() returns
+    //      true, and reachedBottom would flip on before the user touches
+    //      anything. That's the prod bug: local talks to localhost backend
+    //      and content lands fast; prod hops Vercel → Railway → Supabase
+    //      and the page is still loading at any small fixed delay.
+    //   2. A genuinely short page (no scrollbar) would trap the user if
+    //      we only counted scroll events.
+    // Resolution: count real scroll events for tall pages, and for short
+    // pages only auto-pass once the layout has been *settled* (scrollHeight
+    // unchanged) for ≥1.5s — that's our signal that initial data fetches
+    // are done. Poll for up to 10s, then give up so a genuinely-broken
+    // page doesn't leak listeners forever.
     let scrolledOnce = false;
+    let lastScrollHeight = 0;
+    let lastHeightChangeTs = performance.now();
+
     const onScroll = () => {
       scrolledOnce = true;
       if (scrolledToBottom()) setReachedBottom(true);
     };
-    const fallbackId = window.setTimeout(() => {
+
+    let pollTicks = 0;
+    const pollId = window.setInterval(() => {
+      pollTicks += 1;
+      if (pollTicks > 25) {
+        window.clearInterval(pollId);
+        return;
+      }
       if (scrolledOnce) return;
       const el = document.scrollingElement || document.documentElement;
-      const scrollable = el.scrollHeight - el.clientHeight > 50;
-      if (!scrollable) setReachedBottom(true);
-    }, 1500);
+      if (el.scrollHeight !== lastScrollHeight) {
+        // Layout still shifting (data loading, charts hydrating, etc.) —
+        // reset the stability clock.
+        lastScrollHeight = el.scrollHeight;
+        lastHeightChangeTs = performance.now();
+        return;
+      }
+      // Page hasn't grown in this poll cycle; require ≥1.5s of stability.
+      if (performance.now() - lastHeightChangeTs < 1500) return;
+      // Settled. If it still isn't tall enough to scroll, allow advance.
+      if (el.scrollHeight - el.clientHeight > 50) return;
+      setReachedBottom(true);
+      window.clearInterval(pollId);
+    }, 400);
+
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
-      window.clearTimeout(fallbackId);
+      window.clearInterval(pollId);
       window.removeEventListener("scroll", onScroll);
     };
   }, [started, isScrollGate, index]);
