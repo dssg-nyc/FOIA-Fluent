@@ -10900,3 +10900,402 @@ h3, h4, h5 {
   color: var(--foreground);
   margin: 0;
 }
+
+/* ── Product tour (guided onboarding walkthrough) ───────────────────────── */
+.tour-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1010;
+}
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  animation: fadeIn 0.2s ease;
+}
+.tour-popover {
+  position: fixed;
+  z-index: 1011;
+  width: min(92vw, 360px);
+  background: var(--surface);
+  border: 1px solid var(--border-cool);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+  padding: 20px 20px 16px;
+  /* Opacity-only entrance so it doesn't fight `transform: translate`
+   * on `.tour-popover-center` or the dock variant (the previous
+   * `scaleIn` keyframe was clobbering their positioning transforms). */
+  animation: tour-popover-fade 0.22s cubic-bezier(0.22, 0.7, 0.32, 1) both;
+}
+@keyframes tour-popover-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-popover { animation: none; }
+}
+.tour-popover-center {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.tour-step-count {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tour-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 6px 0 8px;
+}
+.tour-body {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.tour-body:last-of-type {
+  margin-bottom: 16px;
+}
+.tour-body strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.tour-progress {
+  display: flex;
+  align-items: center;
+}
+.tour-dots {
+  display: flex;
+  gap: 6px;
+}
+.tour-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--border-cool);
+  transition:
+    background 0.15s,
+    width 0.15s;
+}
+.tour-dot-active {
+  width: 18px;
+  background: var(--primary);
+}
+.tour-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+.tour-btn-group {
+  display: flex;
+  gap: 8px;
+}
+.tour-skip {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 4px;
+}
+.tour-skip:hover {
+  color: var(--foreground);
+}
+.tour-back,
+.tour-next {
+  border: none;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 18px;
+}
+.tour-back {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+.tour-next {
+  background: var(--primary);
+  color: #fff;
+}
+.tour-next:hover {
+  background: var(--primary-hover);
+}
+@media (max-width: 768px) {
+  .tour-popover,
+  .tour-popover-center {
+    left: 50%;
+    right: auto;
+    top: auto;
+    bottom: 16px;
+    transform: translateX(-50%);
+    width: min(92vw, 380px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-backdrop,
+  .tour-popover {
+    animation: none;
+  }
+}
+
+/* ── Product tour: click-through + caret (overrides above) ──────────────── */
+/* Root never captures clicks; the dim (svg) and popover opt in per step so a
+   "navigate" step's highlighted sidebar link stays clickable. */
+.tour-root {
+  pointer-events: none;
+}
+.tour-popover {
+  pointer-events: auto;
+  position: fixed;
+}
+.tour-caret {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-cool);
+  transform: rotate(45deg);
+}
+.tour-caret-top {
+  top: -7px;
+  left: calc(50% - 6px);
+  border-right: none;
+  border-bottom: none;
+}
+.tour-caret-bottom {
+  bottom: -7px;
+  left: calc(50% - 6px);
+  border-left: none;
+  border-top: none;
+}
+.tour-caret-left {
+  left: -7px;
+  top: calc(50% - 6px);
+  border-right: none;
+  border-top: none;
+}
+.tour-caret-right {
+  right: -7px;
+  top: calc(50% - 6px);
+  border-left: none;
+  border-bottom: none;
+}
+
+/* ── Product tour: progress bar, confetti, interactive ring ─────────────── */
+.tour-ring-only {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.tour-bar {
+  height: 4px;
+  width: 100%;
+  background: var(--border-cool);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  margin: 2px 0 2px;
+}
+.tour-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: var(--radius-pill);
+  transition: width 0.25s ease;
+}
+.tour-popover-finale {
+  text-align: center;
+}
+.tour-confetti {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.tour-confetti-piece {
+  position: absolute;
+  top: -10vh;
+  border-radius: 2px;
+  animation-name: tour-confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+@keyframes tour-confetti-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(112vh) rotate(700deg);
+    opacity: 0.85;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-confetti {
+    display: none;
+  }
+}
+
+/* tour scroll-gate hint — boosted size + tinted pill so the "you need
+ * to scroll" requirement is impossible to miss on long pages. Bounce
+ * cadence is intentionally calm (1.7s) so it reads as a patient nudge,
+ * not anxious blinking. */
+.tour-scroll-hint {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 2px 0 12px;
+  text-align: center;
+  letter-spacing: 0.01em;
+  animation: tour-hint-bounce 1.7s ease-in-out infinite;
+}
+@keyframes tour-hint-bounce {
+  0%, 100% { transform: translateY(0); opacity: 0.9; }
+  50% { transform: translateY(2px); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-scroll-hint { animation: none; }
+}
+
+/* Imperative pill shown on interactive steps until the user has
+ * completed the action ("Click a theme bubble"). Same visual language
+ * as the scroll hint so users learn the cue once; the bounce-pulse
+ * cycles a touch faster to read as "do this now". */
+.tour-action-hint {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 2px 0 12px;
+  text-align: center;
+  letter-spacing: 0.01em;
+  animation: tour-action-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tour-action-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.025); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-action-hint { animation: none; }
+}
+
+/* scroll-gate: card docked at the top-right corner so it reads as a
+ * notification banner — out of the sidebar (left), out of the chat
+ * bubble (bottom-right), and out of the content the user is scrolling
+ * past. Bottom-center used to block the content the user was trying
+ * to read on the way down. */
+.tour-popover-dock {
+  position: fixed;
+  right: 24px;
+  top: 24px;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  width: min(92vw, 380px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+}
+@media (max-width: 768px) {
+  .tour-popover-dock {
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
+/* ── Tour polish: spotlight smooth transitions, dots, caret tint,
+ *    target pulse for navigate steps, varied confetti shapes. ─────────── */
+
+/* Smooth glide between targets. The class is applied for ~360ms after
+ * `index` or `followIndex` changes, then removed so the live-sync
+ * loop (which re-measures every frame during scroll/reflow) stays
+ * snappy. Transitioning SVG attributes (x/y/width/height) is supported
+ * by modern browsers under SVG 2; everywhere else it falls back to a
+ * snap, which still works. */
+.tour-spotlight-transitioning rect {
+  transition:
+    x 0.34s cubic-bezier(0.22, 0.7, 0.32, 1),
+    y 0.34s cubic-bezier(0.22, 0.7, 0.32, 1),
+    width 0.34s cubic-bezier(0.22, 0.7, 0.32, 1),
+    height 0.34s cubic-bezier(0.22, 0.7, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight-transitioning rect { transition: none; }
+}
+
+/* Step counter as dots — past = filled small, current = elongated
+ * pulsing pill, future = dim. Reads as progress at a glance. */
+.tour-step-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.tour-step-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border-cool);
+  transition:
+    background 0.2s,
+    width 0.24s cubic-bezier(0.22, 0.7, 0.32, 1),
+    border-radius 0.24s ease;
+  flex-shrink: 0;
+}
+.tour-step-dot-done { background: var(--primary); opacity: 0.55; }
+.tour-step-dot-current {
+  background: var(--primary);
+  width: 18px;
+  border-radius: 999px;
+  animation: tour-dot-pulse 1.8s ease-in-out infinite;
+}
+@keyframes tour-dot-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-step-dot-current { animation: none; }
+}
+
+/* Caret tint — soft primary-coloured glow that visually ties the
+ * popover to the spotlight it's pointing at. Subtle, not flashy. */
+.tour-caret {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+/* Pulsing background ring on the navigate-step target (sidebar / tab
+ * link) so it's findable in a busy nav. Applied/removed via JS as the
+ * step enters/exits — pre-existing layout stays untouched. */
+.tour-target-pulse {
+  position: relative;
+  border-radius: 8px;
+  animation: tour-target-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tour-target-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 0%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary) 22%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-target-pulse { animation: none; }
+}
+
+/* Confetti shape variants — circle + ribbon mixed in with the existing
+ * squares so the finale reads as celebratory rather than mechanical. */
+.tour-confetti-piece-circle { border-radius: 50%; }
+.tour-confetti-piece-ribbon { border-radius: 1px; }

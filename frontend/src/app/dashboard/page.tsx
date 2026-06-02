@@ -87,7 +87,7 @@ export default function Dashboard() {
 
   return (
     <AuthGuard>
-    <main className="container">
+    <main className="container" data-tour="dashboard-page">
       <div className="dashboard-header">
         <div>
           <h1 className="dashboard-title">Track your records requests</h1>
