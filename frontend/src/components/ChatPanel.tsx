@@ -39,13 +39,11 @@ function getPageContext(pathname: string): ChatContext {
 
 export default function ChatPanel() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(() => {
-    if (typeof window !== "undefined") {
-      return window.innerWidth > 768;
-    }
-    return true;
-  });
-  const prevPathname = useRef(pathname);
+  // Default closed. The user opens the chat themselves via the bubble
+  // or ⌘K. Previously we auto-opened on wide viewports and on auth →
+  // app transitions, but that turned the assistant into "always there
+  // in your face" rather than "available when you want it".
+  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -85,18 +83,6 @@ export default function ChatPanel() {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open]);
-
-  // When the user moves from a marketing/auth page into the app proper,
-  // auto-open the chat so they see it for the first time as they enter.
-  // Includes the OTP /login → /hub transition after sign-in completes.
-  useEffect(() => {
-    if (isAuthPage(prevPathname.current) && !isAuthPage(pathname)) {
-      if (typeof window !== "undefined" && window.innerWidth > 768) {
-        setOpen(true);
-      }
-    }
-    prevPathname.current = pathname;
-  }, [pathname]);
 
   // Keyboard shortcut: Cmd+K to toggle
   useEffect(() => {
