@@ -51,18 +51,21 @@ export default function HomePage() {
       {/* HERO */}
       <section className="home-hero">
         <div className="home-inner">
-          <span className="home-eyebrow">Civic intelligence for public records</span>
+          <span className="home-eyebrow">The complete FOIA workspace</span>
           <h1 className="home-hero-title">
-            Find public records.
+            Search records.
             <br />
-            File what doesn&rsquo;t exist yet.
+            Draft requests.
+            <br />
+            Track responses.
           </h1>
           <p className="home-hero-sub">
-            FOIA Fluent is a workspace for public records research. Search
-            what is already out there. When records do not exist yet, draft a
-            request grounded in real statute text and agency rules. Track
-            agency responses through resolution. Watch new federal activity
-            as it lands.
+            <strong>Search</strong> MuckRock, DocumentCloud, and the open
+            web in one place.
+            <strong> Draft</strong> requests grounded in statute and agency
+            rules.
+            <strong> Track</strong> every filing from statutory deadline
+            through response analysis to appeal.
           </p>
           <div className="home-cta-row">
             <Link href={primaryHref} className="home-cta-primary">
@@ -77,8 +80,8 @@ export default function HomePage() {
         <div className="home-hero-shot">
           <div className="home-hero-shot-inner">
             <Image
-              src="/landing/intelligence_page.png"
-              alt="FOIA Fluent live signals dashboard"
+              src="/landing/draft_page.png"
+              alt="Discover and Draft search and request workspace"
               width={2400}
               height={1500}
               priority
@@ -102,10 +105,10 @@ export default function HomePage() {
             </div>
             <div className="home-stat">
               <div className="home-stat-num">17 yr</div>
-              <div className="home-stat-label">FOIA.gov analytics history</div>
+              <div className="home-stat-label">Years of FOIA.gov analytics</div>
             </div>
             <div className="home-stat">
-              <div className="home-stat-num">4</div>
+              <div className="home-stat-num">19</div>
               <div className="home-stat-label">Live federal signal sources</div>
             </div>
           </div>
@@ -116,9 +119,9 @@ export default function HomePage() {
       <section id="features" className="home-features">
         <div className="home-inner">
           <div className="home-section-head">
-            <span className="home-eyebrow">The tools</span>
+            <span className="home-eyebrow">What&rsquo;s inside</span>
             <h2 className="home-section-title">
-              Everything you need to work with public records.
+              The full workflow, in one place.
             </h2>
           </div>
         </div>
@@ -131,17 +134,17 @@ export default function HomePage() {
               Find what already exists. Draft what doesn&rsquo;t.
             </h3>
             <p className="home-spotlight-body">
-              Search MuckRock, DocumentCloud, and the open web side by side.
-              When nothing turns up, the AI drafts the request for you,
-              grounded in real statute text, agency CFR regulations from eCFR,
-              and outcomes from similar past requests. The model is constrained
-              to verified sources, so it cannot invent legal citations.
+              Search MuckRock, DocumentCloud, and the open web in one place.
+              When nothing turns up, the AI drafts the request, grounded in
+              statute text, the agency&rsquo;s eCFR rules, and outcomes from
+              similar past filings. Every citation is verified; the AI cannot
+              fabricate law.
             </p>
             <ul className="home-spotlight-list">
-              <li>Search three public document sources in one place</li>
-              <li>Automatic agency identification, with alternatives ranked</li>
-              <li>Drafts grounded in verified statute and agency rules</li>
-              <li>Save any document to a persistent research library</li>
+              <li>Three sources in one search: MuckRock, DocumentCloud, open web</li>
+              <li>The AI picks the right agency, with backup options ranked</li>
+              <li>Drafts cite real statute sections and CFR rules verbatim</li>
+              <li>Save any result to your research library in one click</li>
             </ul>
             <Link href={signedIn ? "/draft" : "/login?next=/draft"} className="home-spotlight-link">
               {signedIn ? "Open Discover & Draft →" : "Sign in to use Discover & Draft →"}
@@ -158,6 +161,162 @@ export default function HomePage() {
           </div>
         </article>
 
+        {/* Track Requests — full lifecycle: deadline tracking, response
+            analysis, appeal letters. Uses a JSX UI mockup as the visual
+            since no dashboard screenshot exists yet, and the mockup actually
+            communicates the workflow shape more clearly than a static PNG. */}
+        <article className="home-spotlight home-spotlight-reverse home-inner">
+          <div className="home-spotlight-text">
+            <span className="home-eyebrow">Track &amp; Manage</span>
+            <h3 className="home-spotlight-title">
+              From filing to fulfillment, in one place.
+            </h3>
+            <p className="home-spotlight-body">
+              Filed requests live in a dashboard with the statutory deadline
+              shown on every row. Open any request to see its full
+              communication timeline, AI analysis of the agency&rsquo;s
+              response, and follow up or appeal letters drafted from that
+              analysis.
+            </p>
+            <ul className="home-spotlight-list">
+              <li>
+                <strong>Statutory deadline tracking.</strong> 20 business
+                days, federal holidays accounted for, progress bar per
+                request.
+              </li>
+              <li>
+                <strong>Full communication timeline.</strong> Every letter,
+                response, and note in order, with AI analysis on every
+                incoming reply.
+              </li>
+              <li>
+                <strong>AI response analysis.</strong> Exemption review,
+                missing records, and a recommended next action when the
+                agency replies.
+              </li>
+              <li>
+                <strong>Appeal letters in seconds.</strong> Drafted from
+                the exemption assessment and grounds the AI found in the
+                response.
+              </li>
+              <li>
+                <strong>Follow up letters for overdue requests.</strong>
+                Auto drafted with the right statute sections cited.
+              </li>
+              <li>
+                <strong>Drag and drop response uploads.</strong> PDF, images,
+                scans, DOCX, all read by the AI inline.
+              </li>
+              <li>
+                <strong>Import existing requests.</strong> Bring requests
+                you&rsquo;ve already filed in and run the same research
+                pass on them.
+              </li>
+            </ul>
+            <Link href={signedIn ? "/dashboard" : "/login?next=/dashboard"} className="home-spotlight-link">
+              {signedIn ? "Open My Requests →" : "Sign in to track your requests →"}
+            </Link>
+          </div>
+          <div className="home-spotlight-shot">
+            <div
+              className="home-track-mock"
+              role="img"
+              aria-label="Dashboard preview with three requests in different states"
+            >
+              <div className="home-track-mock-header">
+                <div className="home-track-mock-title">My Requests</div>
+                <div className="home-track-mock-tabs">
+                  <span className="home-track-mock-tab home-track-mock-tab-active">All · 3</span>
+                  <span className="home-track-mock-tab">Active · 2</span>
+                  <span className="home-track-mock-tab home-track-mock-tab-warn">Overdue · 1</span>
+                  <span className="home-track-mock-tab">Completed</span>
+                </div>
+              </div>
+              <div className="home-track-mock-rows">
+                <div className="home-track-mock-row home-track-mock-row-overdue">
+                  <div className="home-track-mock-row-top">
+                    <span className="home-track-mock-agency">EPA</span>
+                    <span className="home-track-mock-status home-track-mock-status-awaiting">
+                      Awaiting Response
+                    </span>
+                  </div>
+                  <div className="home-track-mock-row-headline">
+                    PFAS Office of Water records, 2023&ndash;2024
+                  </div>
+                  <div className="home-track-mock-row-deadline home-track-mock-row-deadline-overdue">
+                    <span className="home-track-mock-dot home-track-mock-dot-overdue" />
+                    OVERDUE by 4 business days
+                  </div>
+                </div>
+                <div className="home-track-mock-row">
+                  <div className="home-track-mock-row-top">
+                    <span className="home-track-mock-agency">FDA</span>
+                    <span className="home-track-mock-status home-track-mock-status-submitted">
+                      Submitted
+                    </span>
+                  </div>
+                  <div className="home-track-mock-row-headline">
+                    Inspection findings, Indian generic drug plants
+                  </div>
+                  <div className="home-track-mock-row-deadline">
+                    <span className="home-track-mock-dot" />
+                    Day 12 of 20
+                  </div>
+                </div>
+                <div className="home-track-mock-row">
+                  <div className="home-track-mock-row-top">
+                    <span className="home-track-mock-agency">HUD</span>
+                    <span className="home-track-mock-status home-track-mock-status-responded">
+                      Responded
+                    </span>
+                  </div>
+                  <div className="home-track-mock-row-headline">
+                    Section 8 voucher fraud audits
+                  </div>
+                  <div className="home-track-mock-row-deadline home-track-mock-row-deadline-ready">
+                    <span className="home-track-mock-dot home-track-mock-dot-ready" />
+                    AI analysis ready &middot; appeal recommended
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        {/* Transparency Hub */}
+        <article className="home-spotlight home-inner">
+          <div className="home-spotlight-text">
+            <span className="home-eyebrow">Transparency Hub</span>
+            <h3 className="home-spotlight-title">
+              See how every agency responds.
+            </h3>
+            <p className="home-spotlight-body">
+              Over 1,600 federal agencies and 54 state jurisdictions, ranked
+              by a composite Transparency Score: success rate, response
+              speed, fee rate, and portal availability. Know what to expect
+              before you file.
+            </p>
+            <ul className="home-spotlight-list">
+              <li>Agency by agency deep dives with exemption patterns</li>
+              <li>Interactive state map</li>
+              <li>FOIA at a Glance, Volume Trends, Appeals and Litigation</li>
+              <li>17 years of FOIA.gov data in one view</li>
+            </ul>
+            <Link href={signedIn ? "/hub" : "/login?next=/hub"} className="home-spotlight-link">
+              {signedIn ? "Open Transparency Hub →" : "Sign in to open the Hub →"}
+            </Link>
+          </div>
+          <div className="home-spotlight-shot">
+            <Image
+              src="/landing/homepage.png"
+              alt="Transparency Hub dashboard"
+              width={2400}
+              height={1500}
+              className="home-spotlight-img"
+            />
+          </div>
+        </article>
+
         {/* Live FOIA Signals */}
         <article className="home-spotlight home-spotlight-reverse home-inner">
           <div className="home-spotlight-text">
@@ -167,15 +326,15 @@ export default function HomePage() {
             </h3>
             <p className="home-spotlight-body">
               Every new enforcement action, warning letter, bid protest, and
-              FOIA filing from federal sources. Each record is summarized as
-              soon as it is published, then connected to other records that
-              touch the same company, agency, or investigation. Filter the
-              feed to the kind of work you do.
+              FOIA filing from federal sources. Each record is summarized
+              when it lands, then connected to others that touch the same
+              company, agency, or investigation. Filter to what you care
+              about.
             </p>
             <ul className="home-spotlight-list">
               <li>Cross source patterns refreshed daily</li>
-              <li>Interactive force directed graph of the connections</li>
-              <li>Live feed grouped by day, with a slide in detail view</li>
+              <li>Interactive connection graph</li>
+              <li>Live feed grouped by day, with a sliding detail panel</li>
               <li>Drill from a theme bubble to the underlying signals</li>
             </ul>
             <Link href={signedIn ? "/signals" : "/login?next=/signals"} className="home-spotlight-link">
@@ -193,9 +352,7 @@ export default function HomePage() {
           </div>
         </article>
 
-        {/* Pattern Engine — focused look at the galaxy graph.
-            Intentionally not reversed so the row direction zig-zags between
-            the Live Signals + Transparency Hub spotlights for visual rhythm. */}
+        {/* Pattern Engine — focused look at the galaxy graph. */}
         <article className="home-spotlight home-inner">
           <div className="home-spotlight-text">
             <span className="home-eyebrow">Pattern Engine</span>
@@ -204,18 +361,18 @@ export default function HomePage() {
             </h3>
             <p className="home-spotlight-body">
               Every day, an AI analyst reads the last 60 days of signals
-              across court opinions, agency enforcement, recalls, IG reports,
-              regulatory dockets, and more, then surfaces the connections
-              between them. Each cluster is a story you would miss reading
-              the feed one item at a time.
+              across court opinions, agency enforcement, recalls, IG
+              reports, and regulatory dockets, then surfaces the connections.
+              Each cluster is a story you&rsquo;d miss reading the feed one
+              item at a time.
             </p>
             <ul className="home-spotlight-list">
               <li>
                 <strong>Regulatory cascades.</strong> One agency&rsquo;s
-                action triggers another&rsquo;s follow on.
+                action triggers another&rsquo;s.
               </li>
               <li>
-                <strong>Compounding exposure.</strong> Multi agency action
+                <strong>Compounding exposure.</strong> Several agencies
                 converging on a single company.
               </li>
               <li>
@@ -242,69 +399,27 @@ export default function HomePage() {
           </div>
         </article>
 
-        {/* Transparency Hub */}
-        <article className="home-spotlight home-inner">
-          <div className="home-spotlight-text">
-            <span className="home-eyebrow">Transparency Hub</span>
-            <h3 className="home-spotlight-title">
-              See how every agency actually responds.
-            </h3>
-            <p className="home-spotlight-body">
-              Over 1,600 federal agencies and 54 state jurisdictions ranked by
-              a composite Transparency Score: success rate, response speed,
-              fee rate, and portal availability. Backed by 17 years of FOIA.gov
-              analytics. Know what to expect before you file.
-            </p>
-            <ul className="home-spotlight-list">
-              <li>Agency by agency deep dives, with exemption patterns</li>
-              <li>Interactive state level map</li>
-              <li>FOIA at a Glance, Volume Trends, Appeals and Litigation</li>
-              <li>17 years of FOIA.gov analytics in one view</li>
-            </ul>
-            <Link href={signedIn ? "/hub" : "/login?next=/hub"} className="home-spotlight-link">
-              {signedIn ? "Open Transparency Hub →" : "Sign in to open the Hub →"}
-            </Link>
-          </div>
-          <div className="home-spotlight-shot">
-            <Image
-              src="/landing/homepage.png"
-              alt="Transparency Hub dashboard"
-              width={2400}
-              height={1500}
-              className="home-spotlight-img"
-            />
-          </div>
-        </article>
-
-        {/* Secondary features grid */}
+        {/* Secondary features grid — supporting capabilities. "My Requests"
+            was removed because the Track & Manage spotlight above covers it. */}
         <div className="home-inner">
           <div className="home-small-grid">
-            <div className="home-small-card">
-              <span className="home-eyebrow">My Requests</span>
-              <h4 className="home-small-title">Track filings to resolution.</h4>
-              <p className="home-small-body">
-                Statutory deadline monitoring, response analysis when the
-                agency replies, and one click appeal letters. Your filings
-                stay private to your account.
-              </p>
-              <span className="home-small-note">Sign in to use</span>
-            </div>
             <div className="home-small-card">
               <span className="home-eyebrow">My Discoveries</span>
               <h4 className="home-small-title">A research library that remembers.</h4>
               <p className="home-small-body">
                 Save any document from Discover &amp; Draft. Tag, annotate, mark
-                as reviewed, or link to a tracked FOIA request.
+                as reviewed, or link a discovery to the request it supports.
               </p>
               <span className="home-small-note">Sign in to use</span>
             </div>
             <div className="home-small-card">
               <span className="home-eyebrow">AI Chat Assistant</span>
-              <h4 className="home-small-title">An expert on every page.</h4>
+              <h4 className="home-small-title">Help on every page.</h4>
               <p className="home-small-body">
-                A chat assistant available throughout the app, with sources
-                cited for every claim. Answers come from tool results and
-                verified reference data, never from the model alone.
+                A chat assistant you can open anywhere with &#8984;K.
+                Sources cited on every claim. Answers come from tool
+                results and verified reference data, not the model&rsquo;s
+                memory.
               </p>
               <span className="home-small-note">Available on every page</span>
             </div>
@@ -326,7 +441,7 @@ export default function HomePage() {
               <div className="home-how-step-n">1</div>
               <h4 className="home-how-step-title">Search</h4>
               <p className="home-how-step-body">
-                Describe what you need in plain language. The AI figures out
+                Describe what you need in plain language. The AI identifies
                 the right agency and pulls results from MuckRock,
                 DocumentCloud, and the open web.
               </p>
@@ -335,19 +450,19 @@ export default function HomePage() {
               <div className="home-how-step-n">2</div>
               <h4 className="home-how-step-title">Draft</h4>
               <p className="home-how-step-body">
-                If the records do not exist yet, the AI drafts the request
-                using verified statute text, the agency&rsquo;s CFR rules,
-                and outcomes from similar past requests.
+                If the records don&rsquo;t exist yet, the AI drafts the
+                request using statute text, the agency&rsquo;s CFR rules,
+                and outcomes from similar past filings.
               </p>
             </div>
             <div className="home-how-step">
               <div className="home-how-step-n">3</div>
               <h4 className="home-how-step-title">Track</h4>
               <p className="home-how-step-body">
-                Track the statutory deadline. When the agency replies, get an
-                analysis of what they did and did not release. Generate
-                appeal or follow up letters straight from the request
-                timeline.
+                Track the statutory deadline. When the agency replies, get
+                an analysis of what they released and what they
+                didn&rsquo;t. Generate follow up or appeal letters from
+                the request timeline.
               </p>
             </div>
           </div>
@@ -378,7 +493,7 @@ export default function HomePage() {
             </div>
             <div className="home-audience-card">
               <strong>Civic organizations</strong>
-              <p>Hold agencies accountable with documented, persistent pressure.</p>
+              <p>Hold agencies accountable through documented public records work.</p>
             </div>
           </div>
         </div>
@@ -393,7 +508,7 @@ export default function HomePage() {
           <p className="home-final-sub">
             {signedIn
               ? "Pick up where you left off."
-              : "Sign in with your email — we send a one-time code, no password to remember."}
+              : "Sign in with your email. We send a one-time code; no password to remember."}
           </p>
           <div className="home-cta-row">
             <Link href={primaryHref} className="home-cta-primary">

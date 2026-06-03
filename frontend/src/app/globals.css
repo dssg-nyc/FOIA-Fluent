@@ -10100,12 +10100,177 @@ h3, h4, h5 {
   height: auto;
 }
 
+/* ── Track & Manage spotlight: JSX dashboard mockup ────────────────
+ * No screenshot exists for the dashboard yet, so we render a fidelity
+ * mockup with the same shape (filter tabs + request rows + status
+ * pills + deadline indicators) as the actual /dashboard UI. Mirrors
+ * the spotlight image's visual weight so the layout stays balanced. */
+.home-track-mock {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  font-family: var(--font-body);
+}
+
+.home-track-mock-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.home-track-mock-title {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.home-track-mock-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.home-track-mock-tab {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 8%, transparent);
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.home-track-mock-tab-active {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.home-track-mock-tab-warn {
+  background: color-mix(in srgb, #d97706 18%, transparent);
+  color: #b45309;
+}
+
+.home-track-mock-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.home-track-mock-row {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.home-track-mock-row-overdue {
+  border-color: color-mix(in srgb, #d97706 40%, transparent);
+  background: color-mix(in srgb, #d97706 5%, var(--surface));
+}
+
+.home-track-mock-row-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+}
+
+.home-track-mock-agency {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.home-track-mock-status {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 10%, transparent);
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.home-track-mock-status-awaiting {
+  background: color-mix(in srgb, #d97706 14%, transparent);
+  color: #b45309;
+}
+
+.home-track-mock-status-submitted {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.home-track-mock-status-responded {
+  background: color-mix(in srgb, #059669 14%, transparent);
+  color: #047857;
+}
+
+.home-track-mock-row-headline {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--foreground);
+  line-height: 1.35;
+}
+
+.home-track-mock-row-deadline {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.home-track-mock-row-deadline-overdue { color: #b45309; font-weight: 600; }
+.home-track-mock-row-deadline-ready   { color: #047857; font-weight: 600; }
+
+.home-track-mock-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.home-track-mock-dot-overdue {
+  background: #d97706;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #d97706 22%, transparent);
+}
+
+.home-track-mock-dot-ready {
+  background: #059669;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #059669 22%, transparent);
+}
+
+/* Hero subtext: keep the strong tags weighted but in-flow, not blocky. */
+.home-hero-sub strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
 /* ── Small feature grid ─────────────────────────────────────────── */
 .home-small-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* 2 cards now that "My Requests" was promoted to a full spotlight. */
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.25rem;
   margin: 1rem 0 2rem 0;
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .home-small-card {
