@@ -1325,6 +1325,12 @@ h3, h4, h5 {
   cursor: pointer;
   font-family: var(--font-body);
   transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  /* These classes are used on <Link>/<a> as well as <button> — without
+     these two lines, anchors show the browser's default underline and
+     left-aligned text inside the pill. */
+  text-decoration: none;
+  text-align: center;
+  display: inline-block;
 }
 
 .draft-button:active:not(:disabled) {
@@ -1384,6 +1390,10 @@ h3, h4, h5 {
   cursor: pointer;
   font-family: var(--font-body);
   transition: border-color 0.15s, color 0.15s, transform 0.1s;
+  /* Used on <Link>/<a> too — suppress the UA underline (see .draft-button). */
+  text-decoration: none;
+  text-align: center;
+  display: inline-block;
 }
 
 .wizard-cancel:active {
@@ -11464,3 +11474,197 @@ h3, h4, h5 {
  * squares so the finale reads as celebratory rather than mechanical. */
 .tour-confetti-piece-circle { border-radius: 50%; }
 .tour-confetti-piece-ribbon { border-radius: 1px; }
+
+/* ── Landing-page motion (route "/" only, civicsandbox-inspired) ─────────── */
+
+/* Hand-drawn annotations: the SVG stroke draws itself when scrolled into
+   view (pathLength=1 → dashoffset animates 1 → 0). */
+.lp-anno {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.lp-anno-svg {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.lp-anno-svg path {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  opacity: 0.95;
+}
+
+.lp-anno-on .lp-anno-svg path {
+  animation: lp-draw 0.9s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation-delay: var(--anno-delay, 0ms);
+}
+
+@keyframes lp-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.lp-anno-circle .lp-anno-svg {
+  left: -7%;
+  top: -14%;
+  width: 114%;
+  height: 128%;
+}
+
+.lp-anno-underline .lp-anno-svg {
+  left: -2%;
+  bottom: -0.18em;
+  width: 104%;
+  height: 0.42em;
+}
+
+/* Scroll reveal: sections rise+fade in as they enter the viewport. */
+.lp-reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.7s ease, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.lp-reveal.lp-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* 3D-tilt hero screenshot: starts leaned back, flattens as you scroll
+   (transform driven from JS; this just sets up the stage + smoothing). */
+.lp-tilt-wrap {
+  perspective: 1400px;
+}
+
+.lp-tilt {
+  transform: perspective(1400px) rotateX(14deg);
+  transform-origin: center top;
+  transition: transform 0.08s linear;
+  will-change: transform;
+}
+
+/* Floating "document" papers in the hero — pure CSS 3D, parallaxed by
+   scroll via the --sy variable set from JS. Decorative only. */
+.lp-papers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  --sy: 0;
+}
+
+.lp-paper {
+  position: absolute;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 40px rgba(17, 24, 39, 0.1);
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.lp-paper span {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border);
+}
+
+.lp-paper span:first-child {
+  width: 55%;
+  background: var(--primary-light);
+}
+
+.lp-paper-1 {
+  width: 108px;
+  height: 132px;
+  left: 7%;
+  top: 22%;
+  transform: rotate(-9deg) translateY(calc(var(--sy) * -0.06px));
+  animation: lp-float 7s ease-in-out infinite alternate;
+}
+
+.lp-paper-2 {
+  width: 88px;
+  height: 116px;
+  right: 8%;
+  top: 16%;
+  transform: rotate(7deg) translateY(calc(var(--sy) * -0.11px));
+  animation: lp-float 9s ease-in-out 1.2s infinite alternate;
+}
+
+.lp-paper-3 {
+  width: 72px;
+  height: 92px;
+  right: 16%;
+  top: 55%;
+  transform: rotate(-5deg) translateY(calc(var(--sy) * -0.16px));
+  animation: lp-float 8s ease-in-out 0.6s infinite alternate;
+}
+
+@keyframes lp-float {
+  from {
+    margin-top: 0;
+  }
+  to {
+    margin-top: -16px;
+  }
+}
+
+/* Spotlight screenshots get a gentle lift on hover. */
+.home-spotlight-shot {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.home-spotlight-shot:hover {
+  transform: translateY(-6px);
+}
+
+/* The hero needs to be a positioning context for the papers, and its text
+   above them. */
+.home-hero {
+  position: relative;
+}
+
+.home-hero .home-inner,
+.home-hero .home-hero-shot {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 900px) {
+  .lp-papers {
+    display: none;   /* decorative only — clutter on small screens */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-anno-on .lp-anno-svg path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .lp-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .lp-tilt {
+    transform: none !important;
+  }
+  .lp-paper {
+    animation: none;
+  }
+}
