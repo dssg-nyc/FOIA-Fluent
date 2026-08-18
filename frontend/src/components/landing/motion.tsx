@@ -212,16 +212,24 @@ export function FloatingPapers() {
     };
   }, []);
 
+  // Each sheet is a released record: an agency header bar, body lines, and
+  // one or two blacked-out passages. The redactions are what make the
+  // papers legible as documents at a glance — plain grey rules on a white
+  // card had no contrast against the hero's near-white background.
   return (
     <div ref={ref} className="lp-papers" aria-hidden="true">
       <div className="lp-paper lp-paper-1">
-        <span /><span /><span />
+        <span className="lp-paper-stamp" />
+        <span /><span className="lp-redact" /><span /><span />
       </div>
       <div className="lp-paper lp-paper-2">
-        <span /><span /><span /><span />
+        <span className="lp-paper-stamp" />
+        <span /><span /><span className="lp-redact" />
+        <span /><span className="lp-redact lp-redact-short" />
       </div>
       <div className="lp-paper lp-paper-3">
-        <span /><span />
+        <span className="lp-paper-stamp" />
+        <span /><span className="lp-redact" /><span />
       </div>
     </div>
   );

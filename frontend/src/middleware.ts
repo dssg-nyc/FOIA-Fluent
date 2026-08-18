@@ -22,6 +22,13 @@ const PUBLIC_PATHS: { path: string; prefix?: boolean }[] = [
   { path: "/_next", prefix: true },
   { path: "/api", prefix: true }, // Next.js internal route handlers
   { path: "/favicon.ico" },
+  // Crawler + social-card surfaces. These have extensions the static-asset
+  // regex below doesn't cover (.txt/.xml) or no extension at all, so they
+  // need explicit entries — otherwise they 302 to /login and every crawler
+  // and link unfurler sees a sign-in page instead of the landing page.
+  { path: "/robots.txt" },
+  { path: "/sitemap.xml" },
+  { path: "/opengraph-image", prefix: true },
 ];
 
 function isPublic(pathname: string): boolean {
