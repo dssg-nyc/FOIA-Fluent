@@ -10,7 +10,10 @@ import {
   FloatingPapers,
   Reveal,
   TiltShot,
+  DrawnArrow,
+  useInView,
 } from "@/components/landing/motion";
+import { FluidReveal } from "@/components/landing/FluidReveal";
 import {
   IconBookmark,
   IconChat,
@@ -26,6 +29,10 @@ import {
 
 export default function LandingClient() {
   const [signedIn, setSignedIn] = useState(false);
+  // The dashboard mock animates its rows in only once the mock itself is
+  // half in view — piggybacking the wrapper <Reveal> fired too early, so
+  // the stagger played while the mock was still below the fold.
+  const [mockRef, mockIn] = useInView<HTMLDivElement>(0.5);
 
   useEffect(() => {
     if (!supabase) return;
@@ -77,6 +84,7 @@ export default function LandingClient() {
 
       {/* HERO */}
       <section className="home-hero">
+        <FluidReveal />
         <FloatingPapers />
         <div className="home-inner">
           <span className="home-eyebrow">The complete FOIA workspace</span>
@@ -225,7 +233,8 @@ export default function LandingClient() {
 
             <Reveal className="home-showcase-stage" delay={120}>
               <div
-                className="home-track-mock"
+                ref={mockRef}
+                className={`home-track-mock ${mockIn ? "home-track-mock-live" : ""}`}
                 role="img"
                 aria-label="Dashboard preview with three requests in different states"
               >
@@ -464,6 +473,8 @@ export default function LandingClient() {
             </div>
           </Reveal>
           <div className="home-how-steps">
+            <DrawnArrow className="lp-howarrow-1" delay={400} />
+            <DrawnArrow className="lp-howarrow-2" delay={750} />
             <Reveal className="home-how-step">
               <div className="home-how-step-n">1</div>
               <h4 className="home-how-step-title">Search</h4>

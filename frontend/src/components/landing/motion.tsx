@@ -24,7 +24,7 @@ import {
   useState,
 } from "react";
 
-function useInView<T extends HTMLElement>(threshold = 0.4): [React.RefObject<T>, boolean] {
+export function useInView<T extends HTMLElement>(threshold = 0.4): [React.RefObject<T>, boolean] {
   const ref = useRef<T>(null);
   const [inView, setInView] = useState(false);
   useEffect(() => {
@@ -232,5 +232,28 @@ export function FloatingPapers() {
         <span /><span className="lp-redact" /><span />
       </div>
     </div>
+  );
+}
+
+/* ── Hand-drawn connector arrow (how-it-works steps) ─────────────────────── */
+
+// Same draw-on-scroll stroke technique as <Anno>: one path (arc + two
+// arrowhead strokes) normalized via pathLength so the dashoffset animation
+// draws the arc first, then flicks the head on.
+const ARROW_PATH = "M6 34 C40 12 92 10 128 24 M128 24 l-12 -7 M128 24 l-10 8";
+
+export function DrawnArrow({ className = "", delay = 0 }: { className?: string; delay?: number }) {
+  const [ref, inView] = useInView<HTMLSpanElement>(0.9);
+  return (
+    <span
+      ref={ref}
+      className={`lp-howarrow ${inView ? "lp-anno-on" : ""} ${className}`}
+      style={{ ["--anno-delay" as string]: `${delay}ms` }}
+      aria-hidden="true"
+    >
+      <svg className="lp-anno-svg" viewBox="0 0 140 48" preserveAspectRatio="none">
+        <path d={ARROW_PATH} pathLength={1} />
+      </svg>
+    </span>
   );
 }

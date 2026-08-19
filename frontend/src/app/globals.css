@@ -12881,6 +12881,22 @@ a.dashboard-briefing-topic:hover {
   position: relative;
 }
 
+/* Fluid "un-redaction" canvas — fills the hero behind everything. */
+.lp-fluid {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .lp-fluid {
+    display: none;
+  }
+}
+
 .home-hero .home-inner,
 .home-hero .home-hero-shot {
   position: relative;
@@ -12908,5 +12924,94 @@ a.dashboard-briefing-topic:hover {
   }
   .lp-paper {
     animation: none;
+  }
+}
+
+/* ── How-it-works: hand-drawn connector arrows (draw on scroll) ──────────── */
+
+.home-how-steps {
+  position: relative;
+}
+
+.lp-howarrow {
+  position: absolute;
+  top: 6px;
+  width: 120px;
+  height: 44px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.lp-howarrow .lp-anno-svg {
+  position: static;
+  width: 100%;
+  height: 100%;
+}
+
+.lp-howarrow-1 {
+  left: calc(33.333% - 86px);
+}
+
+.lp-howarrow-2 {
+  left: calc(66.666% - 86px);
+}
+
+@media (max-width: 900px) {
+  .lp-howarrow {
+    display: none;   /* steps stack vertically — arrows would point sideways */
+  }
+}
+
+/* ── Track & Manage mock: rows stagger in, overdue dot pulses ────────────── */
+
+.home-track-mock .home-track-mock-row {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.55s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.home-track-mock-live .home-track-mock-row {
+  opacity: 1;
+  transform: none;
+}
+
+.home-track-mock-live .home-track-mock-row:nth-child(1) { transition-delay: 0.15s; }
+.home-track-mock-live .home-track-mock-row:nth-child(2) { transition-delay: 0.4s; }
+.home-track-mock-live .home-track-mock-row:nth-child(3) { transition-delay: 0.65s; }
+
+.home-track-mock-dot-overdue {
+  animation: lp-dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes lp-dot-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+  70% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+/* ── Audience cards: lift on hover (icon tint already exists) ────────────── */
+
+.home-audience-card {
+  transition: border-color 0.15s, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.25s;
+}
+
+.home-audience-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-cool);
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.07);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-track-mock .home-track-mock-row {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .home-track-mock-dot-overdue {
+    animation: none;
+  }
+  .home-audience-card:hover {
+    transform: none;
   }
 }
